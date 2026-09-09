@@ -82,6 +82,8 @@ export interface OBState {
   searchQuery: string;
   /** Filter items by group (-1 = all) */
   filterGroup: number;
+  /** Filter equipment appearances by their linked item's classification. */
+  equipmentFilter: string;
   /** Number of columns shown in the left object library. */
   libraryColumns: number;
   /** Bumped on every edit to force re-render of dependent components */
@@ -132,6 +134,7 @@ export interface OBState {
   clearThingSelection: () => void;
   setSearchQuery: (q: string) => void;
   setFilterGroup: (g: number) => void;
+  setEquipmentFilter: (filter: string) => void;
   setLibraryColumns: (columns: number) => void;
   reset: () => void;
 

@@ -251,3 +251,52 @@ export function hasEquipmentClassification(
     || (typeof slotType === 'string' && slotType.trim() !== '')
   );
 }
+
+export type EquipmentClassificationKind = 'weapon' | 'slot';
+
+export interface EquipmentClassification {
+  key: string;
+  kind: EquipmentClassificationKind;
+  value: string;
+  label: string;
+}
+
+function formatEquipmentClassificationLabel(value: string): string {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+/**
+ * Return the category used to group an equipment appearance in the library.
+ * Weapon type is more specific than its generic hand slot, so it wins when
+ * both properties are present.
+ */
+export function getEquipmentClassification(
+  properties: ItemProperties | null | undefined,
+): EquipmentClassification | null {
+  const weaponType = readItemProperty(properties, 'weaponType');
+  if (typeof weaponType === 'string' && weaponType.trim() !== '') {
+    const value = weaponType.trim();
+    return {
+      key: `weapon:${value.toLowerCase()}`,
+      kind: 'weapon',
+      value,
+      label: formatEquipmentClassificationLabel(value),
+    };
+  }
+
+  const slotType = readItemProperty(properties, 'slotType');
+  if (typeof slotType === 'string' && slotType.trim() !== '') {
+    const value = slotType.trim();
+    return {
+      key: `slot:${value.toLowerCase()}`,
+      kind: 'slot',
+      value,
+      label: formatEquipmentClassificationLabel(value),
+    };
+  }
+
+  return null;
+}

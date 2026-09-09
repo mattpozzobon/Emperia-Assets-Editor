@@ -371,6 +371,7 @@ function OutfitThumbnail({ equipmentAppearanceId, size = 32, direction = 2 }: { 
         activeLibrary: 'equipment',
         searchQuery: '',
         filterGroup: -1,
+        equipmentFilter: 'all',
       });
     }
     setSelectedThingId(internalId);
@@ -440,7 +441,7 @@ function ItemThumbnail({ itemId, size = 28 }: { itemId: number; size?: number })
     const { setCenterTab, setSelectedThingId } = useOBStore.getState();
     // Switch to item category if not already
     if (useOBStore.getState().activeCategory !== 'item') {
-      useOBStore.setState({ activeCategory: 'item', activeLibrary: 'item', searchQuery: '', filterGroup: -1 });
+      useOBStore.setState({ activeCategory: 'item', activeLibrary: 'item', searchQuery: '', filterGroup: -1, equipmentFilter: 'all' });
     }
     setSelectedThingId(appearanceId!);
     setCenterTab('texture');

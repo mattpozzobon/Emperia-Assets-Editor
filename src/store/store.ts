@@ -103,6 +103,7 @@ export const useOBStore = create<OBState>((set, get) => ({
   selectedThingIds: new Set(),
   searchQuery: '',
   filterGroup: -1,
+  equipmentFilter: 'all',
   libraryColumns: getSavedLibraryColumns(),
   editVersion: 0,
   focusSpriteId: null,
@@ -273,6 +274,7 @@ export const useOBStore = create<OBState>((set, get) => ({
       selectedThingIds: new Set(),
       searchQuery: '',
       filterGroup: -1,
+      equipmentFilter: 'all',
     });
   },
 
@@ -297,6 +299,7 @@ export const useOBStore = create<OBState>((set, get) => ({
   clearThingSelection: () => set({ selectedThingIds: new Set() }),
   setSearchQuery: (q) => set({ searchQuery: q }),
   setFilterGroup: (g) => set({ filterGroup: g }),
+  setEquipmentFilter: (filter) => set({ equipmentFilter: filter }),
   setLibraryColumns: (columns) => {
     const next = Math.max(2, Math.min(6, Math.round(columns)));
     localStorage.setItem('emperia-ob-library-columns', String(next));
@@ -316,6 +319,7 @@ export const useOBStore = create<OBState>((set, get) => ({
       selectedThingId: null,
       searchQuery: '',
       filterGroup: -1,
+      equipmentFilter: 'all',
       dirty: false,
       dirtyIds: new Set(),
       undoStack: [],

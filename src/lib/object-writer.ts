@@ -162,7 +162,7 @@ export function compileObjectData(
 
   // Copy the original 20-byte Emperia header, then write current counts
   // (counts may have changed if things were added/removed)
-  // Ensure feature flags byte (offset 0x0F) is correct — previous Web OB builds
+  // Ensure feature flags byte (offset 0x0F) is correct — previous Assets Editor builds
   // wrote 0x00 which breaks legacy OB parsing (wrong extended/transparency).
   const isExtended = data.version >= 960;
   const isTransparent = data.version >= 960;

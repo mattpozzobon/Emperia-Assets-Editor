@@ -29,6 +29,7 @@ export function ThingGrid() {
   const spriteOverrides = useOBStore((s) => s.spriteOverrides);
   const editVersion = useOBStore((s) => s.editVersion); // re-render on sprite replacement
   const filterGroup = useOBStore((s) => s.filterGroup);
+  const equipmentFilter = useOBStore((s) => s.equipmentFilter);
   const cols = useOBStore((s) => s.libraryColumns);
   const itemDefinitions = useOBStore((s) => s.itemDefinitions);
   const appearanceToItemIds = useOBStore((s) => s.appearanceToItemIds);
@@ -60,13 +61,14 @@ export function ThingGrid() {
       activeCategory,
       searchQuery,
       filterGroup,
+      equipmentFilter,
       getCategoryRange,
       itemDefinitions,
       appearanceToItemIds,
       itemLocalizations,
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [objectData, activeCategory, activeLibrary, searchQuery, filterGroup, getCategoryRange, itemDefinitions, appearanceToItemIds, itemLocalizations, editVersion],
+    [objectData, activeCategory, activeLibrary, searchQuery, filterGroup, equipmentFilter, getCategoryRange, itemDefinitions, appearanceToItemIds, itemLocalizations, editVersion],
   );
 
   const containerRef = useRef<HTMLDivElement>(null);

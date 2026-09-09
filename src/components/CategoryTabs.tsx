@@ -1,5 +1,7 @@
 import { Search, Plus, Minus, Trash2, Grid2X2 } from 'lucide-react';
+import { useMemo } from 'react';
 import { useOBStore, getDisplayId } from '../store';
+import { getEquipmentClassification } from '../lib/item-properties';
 
 const GROUP_LABELS: Record<number, string> = {
   0: 'None',
@@ -29,6 +31,9 @@ export function CategoryTabs() {
   const getCategoryRange = useOBStore((s) => s.getCategoryRange);
   const filterGroup = useOBStore((s) => s.filterGroup);
   const setFilterGroup = useOBStore((s) => s.setFilterGroup);
+  const equipmentFilter = useOBStore((s) => s.equipmentFilter);
+  const setEquipmentFilter = useOBStore((s) => s.setEquipmentFilter);
+  const itemDefinitions = useOBStore((s) => s.itemDefinitions);
   const libraryColumns = useOBStore((s) => s.libraryColumns);
   const setLibraryColumns = useOBStore((s) => s.setLibraryColumns);
   const definitionsLoaded = useOBStore((s) => s.definitionsLoaded);
@@ -36,6 +41,18 @@ export function CategoryTabs() {
   useOBStore((s) => s.editVersion);
 
   const selCount = selectedThingIds.size;
+  const equipmentFilterOptions = useMemo(() => {
+    const options = new Map<string, ReturnType<typeof getEquipmentClassification>>();
+    for (const itemId of objectData?.equipmentAppearances.keys() ?? []) {
+      const classification = getEquipmentClassification(itemDefinitions.get(itemId)?.properties);
+      if (classification) options.set(classification.key, classification);
+    }
+    return Array.from(options.values())
+      .filter((option): option is NonNullable<typeof option> => option != null)
+      .sort((left, right) => (
+        left.kind.localeCompare(right.kind) || left.label.localeCompare(right.label)
+      ));
+  }, [objectData, itemDefinitions]);
 
   return (
     <div className="shrink-0">
@@ -52,6 +69,32 @@ export function CategoryTabs() {
             {Object.entries(GROUP_LABELS).map(([g, label]) => (
               <option key={g} value={g}>{label}</option>
             ))}
+          </select>
+        )}
+        {definitionsLoaded && activeLibrary === 'equipment' && (
+          <select
+            value={equipmentFilter}
+            onChange={(e) => setEquipmentFilter(e.target.value)}
+            className="text-[10px] bg-emperia-surface border border-emperia-border rounded px-1 py-1 text-emperia-text outline-none cursor-pointer max-w-[105px] shrink-0"
+            title="Filter by linked item classification"
+            aria-label="Equipment classification filter"
+          >
+            <option value="all">All</option>
+            {equipmentFilterOptions.some((option) => option.kind === 'weapon') && (
+              <optgroup label="Weapon type">
+                {equipmentFilterOptions
+                  .filter((option) => option.kind === 'weapon')
+                  .map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
+              </optgroup>
+            )}
+            {equipmentFilterOptions.some((option) => option.kind === 'slot') && (
+              <optgroup label="Slot">
+                {equipmentFilterOptions
+                  .filter((option) => option.kind === 'slot')
+                  .map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
+              </optgroup>
+            )}
+            <option value="unlinked">Unlinked</option>
           </select>
         )}
         <div className="flex items-center gap-1.5 bg-emperia-surface rounded px-2 py-1 flex-1">

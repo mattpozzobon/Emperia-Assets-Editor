@@ -9,7 +9,7 @@ import type {
   ItemLocale,
   ItemLocalizedText,
 } from '../lib/types';
-import { readItemProperty } from '../lib/item-properties';
+import { getEquipmentClassification, readItemProperty } from '../lib/item-properties';
 
 /** Convert an internal map ID to its category-local display ID. */
 export function getDisplayId(objectData: ObjectData, internalId: number): number {
@@ -38,6 +38,7 @@ export function getThingsForCategory(
   activeCategory: ThingCategory,
   searchQuery: string,
   filterGroup: number,
+  equipmentFilter: string,
   getCategoryRange: (cat: ThingCategory) => { start: number; end: number } | null,
   itemDefinitions?: Map<number, ItemDefinition>,
   appearanceToItemIds?: Map<number, number>,
@@ -48,6 +49,17 @@ export function getThingsForCategory(
   if (!range) return [];
 
   const q = searchQuery.trim().toLowerCase();
+  const equipmentItemIdsByAppearance = new Map<number, number[]>();
+  if (activeCategory === 'equipment' && equipmentFilter !== 'all') {
+    for (const [itemId, appearance] of objectData.equipmentAppearances) {
+      for (const appearanceId of [appearance.default, appearance.left, appearance.right]) {
+        if (appearanceId == null) continue;
+        const itemIds = equipmentItemIdsByAppearance.get(appearanceId) ?? [];
+        itemIds.push(itemId);
+        equipmentItemIdsByAppearance.set(appearanceId, itemIds);
+      }
+    }
+  }
   const things: ThingType[] = [];
   for (let id = range.start; id <= range.end; id++) {
     const thing = objectData.things.get(id);
@@ -58,6 +70,21 @@ export function getThingsForCategory(
       const itemId = appearanceToItemIds.get(id);
       const def = itemId != null ? itemDefinitions.get(itemId) : undefined;
       if (!def || def.group !== filterGroup) continue;
+    }
+
+    if (activeCategory === 'equipment' && equipmentFilter !== 'all') {
+      const appearanceId = getDisplayId(objectData, id);
+      const linkedItemIds = equipmentItemIdsByAppearance.get(appearanceId) ?? [];
+
+      if (equipmentFilter === 'unlinked') {
+        if (linkedItemIds.length > 0) continue;
+      } else {
+        const matchesClassification = linkedItemIds.some((itemId) => {
+          const classification = getEquipmentClassification(itemDefinitions?.get(itemId)?.properties);
+          return classification?.key === equipmentFilter;
+        });
+        if (!matchesClassification) continue;
+      }
     }
 
     // Search filter: match by appearance ID, public item ID, or name.
