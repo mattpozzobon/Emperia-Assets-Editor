@@ -169,6 +169,44 @@ export function CompileModal({ compile, open, onClose }: CompileModalProps) {
               </div>
             </section>
           )}
+
+          {compile.cdnPublish && (
+            <section>
+              <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-emperia-muted">
+                CDN publication
+              </h3>
+              <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-emperia-border bg-emperia-border text-xs">
+                <div className="bg-emperia-surface px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-wide text-emperia-muted">Release</div>
+                  <div className="mt-0.5 truncate font-mono text-emerald-300" title={compile.cdnPublish.release}>
+                    {compile.cdnPublish.release.slice(0, 12)}
+                  </div>
+                </div>
+                <div className="bg-emperia-surface px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-wide text-emperia-muted">Package ID</div>
+                  <div className="mt-0.5 truncate font-mono text-sky-300" title={compile.cdnPublish.packageId}>
+                    {compile.cdnPublish.packageId.slice(0, 12)}
+                  </div>
+                </div>
+                <div className="bg-emperia-surface px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-wide text-emperia-muted">Objects</div>
+                  <div className="mt-0.5 text-emperia-text">
+                    {compile.cdnPublish.changedObjects} uploaded · {compile.cdnPublish.skippedObjects} unchanged
+                  </div>
+                </div>
+                <div className="bg-emperia-surface px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-wide text-emperia-muted">Transferred</div>
+                  <div className="mt-0.5 text-emperia-text">
+                    {formatBytes(compile.cdnPublish.uploadedBytes)}
+                  </div>
+                </div>
+                <div className="col-span-2 bg-emperia-surface px-3 py-2">
+                  <span className="text-[10px] uppercase tracking-wide text-emperia-muted">Destination </span>
+                  <span className="font-mono text-emperia-text">{compile.cdnPublish.bucket}</span>
+                </div>
+              </div>
+            </section>
+          )}
         </div>
 
         <div className="flex items-center justify-between border-t border-emperia-border px-5 py-3">

@@ -225,7 +225,7 @@ export function FileDropZone() {
             className="w-24 h-24 mx-auto mb-4"
           />
           <h1 className="text-3xl font-bold text-emperia-text mb-2">
-            Emperia Object Builder
+            Emperia Assets Editor
           </h1>
           <p className="text-emperia-muted text-sm">v1.0.0 — Web Edition</p>
         </div>

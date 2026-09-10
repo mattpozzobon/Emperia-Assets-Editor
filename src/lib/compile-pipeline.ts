@@ -39,6 +39,15 @@ export interface CompileOutput {
   size: number;
 }
 
+export interface CdnPublishResult {
+  bucket: string;
+  release: string;
+  packageId: string;
+  changedObjects: number;
+  skippedObjects: number;
+  uploadedBytes: number;
+}
+
 export interface CompileState {
   active: boolean;
   steps: CompileStep[];
@@ -47,6 +56,7 @@ export interface CompileState {
   startTime: number;
   endTime?: number;
   totalElapsed: number;
+  cdnPublish?: CdnPublishResult;
 }
 
 export const STEP_LABELS = [
@@ -56,6 +66,7 @@ export const STEP_LABELS = [
   'Item Localizations',
   'Asset Package Manifest',
   'Validate & Save',
+  'Publish to CDN',
 ] as const;
 
 export const INITIAL_COMPILE_STATE: CompileState = {
@@ -373,6 +384,7 @@ function downloadFile(buffer: ArrayBuffer, filename: string): void {
 export async function runCompile(
   setCompile: React.Dispatch<React.SetStateAction<CompileState>>,
   markClean: () => void,
+  options: { publishToCdn?: boolean } = {},
 ): Promise<void> {
   const state = useOBStore.getState();
   const {
@@ -407,6 +419,7 @@ export async function runCompile(
     currentStep: 0,
     startTime,
     totalElapsed: 0,
+    cdnPublish: undefined,
   });
 
   function publish(idx: number, patch: Partial<CompileStep>): void {
@@ -797,6 +810,37 @@ export async function runCompile(
 
   if (!saveSucceeded && !primarySaved) {
     console.error('[OB] No compiled source files were replaced.');
+  }
+
+  if (saveSucceeded && options.publishToCdn) {
+    await runStep(6, async () => {
+      const packageArtifact = artifacts.find((artifact) => artifact.name === 'asset-package.json');
+      if (!packageArtifact) throw new Error('Compiled asset package manifest is missing.');
+      const packageManifest = JSON.parse(new TextDecoder().decode(packageArtifact.buf)) as { packageId?: string };
+      if (!packageManifest.packageId) throw new Error('Compiled asset package ID is missing.');
+      const response = await fetch('/api/publish-assets', {
+        method: 'POST',
+        headers: { 'X-Emperia-Package-Id': packageManifest.packageId },
+      });
+      const payload = await response.json().catch(() => null) as CdnPublishResult | { error?: string } | null;
+      if (!response.ok) {
+        throw new Error(payload && 'error' in payload && payload.error
+          ? payload.error
+          : `CDN publish failed with HTTP ${response.status}.`);
+      }
+      if (
+        !payload
+        || !('release' in payload)
+        || !('packageId' in payload)
+        || typeof payload.uploadedBytes !== 'number'
+      ) {
+        throw new Error('CDN publisher returned an invalid response.');
+      }
+      setCompile((previous) => ({ ...previous, cdnPublish: payload }));
+      return payload.uploadedBytes;
+    });
+  } else {
+    skipStep(6);
   }
   finish();
 }

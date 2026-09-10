@@ -7,6 +7,7 @@
     "dev": "node scripts/dev.mjs",
     "dev:ui": "vite",
     "build": "tsc -b && vite build",
+    "publish:assets": "node scripts/publish-assets.mjs",
     "preview": "vite preview",
     "worker:types": "wrangler types worker/worker-configuration.d.ts",
     "worker:dev": "wrangler dev",

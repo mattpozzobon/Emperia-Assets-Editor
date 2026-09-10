@@ -133,23 +133,50 @@ export function SpriteGroupTray() {
   const selectedId = useOBStore((s) => s.selectedThingId);
   const objectData = useOBStore((s) => s.objectData);
   const editVersion = useOBStore((s) => s.editVersion);
+  const activeGroup = useOBStore((s) => s.activeGroup);
+  const activeDirection = useOBStore((s) => s.activeDirection);
+  const activePatternY = useOBStore((s) => s.activePatternY);
   const [trayHeight, setTrayHeight] = useState(DEFAULT_TRAY_HEIGHT);
   const resizeStartRef = useRef<{ y: number; height: number } | null>(null);
 
   const thing = selectedId != null ? objectData?.things.get(selectedId) ?? null : null;
+  const frameGroup = thing?.frameGroups[activeGroup] ?? null;
+  const targetPatternX = frameGroup
+    ? Math.max(0, Math.min(activeDirection, frameGroup.patternX - 1))
+    : 0;
+  const targetPatternY = frameGroup
+    ? Math.max(0, Math.min(activePatternY, frameGroup.patternY - 1))
+    : 0;
 
-  // Collect all sprite IDs used by the currently selected thing
+  // Collect sprite IDs used in the pattern/direction currently shown in preview.
   const usedSpriteIds = useMemo(() => {
     const used = new Set<number>();
-    if (!thing) return used;
-    for (const fg of thing.frameGroups) {
-      for (const sid of fg.sprites) {
-        if (sid > 0) used.add(sid);
+    if (!frameGroup) return used;
+    for (let frame = 0; frame < frameGroup.animationLength; frame++) {
+      for (let patternZ = 0; patternZ < frameGroup.patternZ; patternZ++) {
+        for (let layer = 0; layer < frameGroup.layers; layer++) {
+          for (let tileY = 0; tileY < frameGroup.height; tileY++) {
+            for (let tileX = 0; tileX < frameGroup.width; tileX++) {
+              const index = getSpriteIndex(
+                frameGroup,
+                frame,
+                targetPatternX,
+                targetPatternY,
+                patternZ,
+                layer,
+                tileX,
+                tileY,
+              );
+              const spriteId = frameGroup.sprites[index];
+              if (spriteId > 0) used.add(spriteId);
+            }
+          }
+        }
       }
     }
     return used;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [thing, editVersion]);
+  }, [frameGroup, targetPatternX, targetPatternY, editVersion]);
 
   // Determine which groups have ALL their non-zero sprites placed on the current thing
   const placedSet = useMemo(() => {
@@ -165,34 +192,47 @@ export function SpriteGroupTray() {
 
   // Fill all unplaced groups into sequential animation frames
   const handleFillFrames = useCallback(() => {
-    if (!thing) return;
-    // Use the active frame group (idle = 0 for items, may differ for outfits)
-    const fgIndex = 0;
-    const fg = thing.frameGroups[fgIndex];
-    if (!fg) return;
+    if (!thing || !frameGroup) return;
 
     const unplaced = spriteGroups.filter(g => !placedSet.has(g.id));
     if (unplaced.length === 0) return;
 
-    const maxFrames = fg.animationLength;
     let anyPlaced = false;
 
-    // Find the first empty frame (frame where all tiles in the pattern cell are 0)
-    let startFrame = 0;
-    for (let f = 0; f < maxFrames; f++) {
-      // Check if this frame already has sprites
-      const idx = getSpriteIndex(fg, f, 0, 0, 0, 0, 0, 0);
-      if (idx < fg.sprites.length && fg.sprites[idx] > 0) {
-        startFrame = f + 1;
-      } else {
-        break;
+    const emptyFrames = Array.from(
+      { length: frameGroup.animationLength },
+      (_, frame) => frame,
+    ).filter((frame) => {
+      for (let patternZ = 0; patternZ < frameGroup.patternZ; patternZ++) {
+        for (let layer = 0; layer < frameGroup.layers; layer++) {
+          for (let tileY = 0; tileY < frameGroup.height; tileY++) {
+            for (let tileX = 0; tileX < frameGroup.width; tileX++) {
+              const index = getSpriteIndex(
+                frameGroup,
+                frame,
+                targetPatternX,
+                targetPatternY,
+                patternZ,
+                layer,
+                tileX,
+                tileY,
+              );
+              if (frameGroup.sprites[index] > 0) return false;
+            }
+          }
+        }
       }
-    }
+      return true;
+    });
 
-    for (let i = 0; i < unplaced.length; i++) {
-      const frame = startFrame + i;
-      if (frame >= maxFrames) break;
-      if (placeGroupOnFrame(fg, unplaced[i], frame, 0, 0)) {
+    for (let i = 0; i < unplaced.length && i < emptyFrames.length; i++) {
+      if (placeGroupOnFrame(
+        frameGroup,
+        unplaced[i],
+        emptyFrames[i],
+        targetPatternX,
+        targetPatternY,
+      )) {
         anyPlaced = true;
       }
     }
@@ -205,7 +245,7 @@ export function SpriteGroupTray() {
       newDirtyIds.add(thing.id);
       useOBStore.setState({ dirty: true, dirtyIds: newDirtyIds, editVersion: store.editVersion + 1 });
     }
-  }, [thing, spriteGroups, placedSet]);
+  }, [thing, frameGroup, spriteGroups, placedSet, targetPatternX, targetPatternY]);
 
   useEffect(() => {
     const handlePointerMove = (e: PointerEvent) => {

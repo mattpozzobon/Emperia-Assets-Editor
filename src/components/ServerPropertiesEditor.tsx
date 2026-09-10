@@ -5,6 +5,7 @@ import { ITEM_SLOT_TYPES } from '../lib/item-slot-types';
 import { inferVisualFlagsFromIdentity, ITEM_IDENTITY_GROUPS } from '../lib/item-identity';
 import {
   hasEquipmentClassification,
+  ITEM_FIELD_TYPES,
   normalizeItemPropertiesForEditor,
   writeItemProperty,
 } from '../lib/item-properties';
@@ -57,7 +58,7 @@ const FIELD_HELP: Record<string, string> = {
   transformEquipTo: 'Item id this item becomes when equipped.',
   transformDeEquipTo: 'Item id this item becomes when unequipped.',
   fluidSource: 'Fluid provided when an empty fluid container is used on this item, such as water, blood, or slime.',
-  field: 'Magic field metadata used by field items.',
+  field: 'Runtime field category used by hazards and temporary spell-created field items.',
   healthGain: 'Health regenerated per tick while this item effect is active.',
   healthTicks: 'Interval for health regeneration.',
   manaGain: 'Mana regenerated per tick while this item effect is active.',
@@ -94,7 +95,7 @@ const FIELD_EXAMPLES: Record<string, string> = {
   transformEquipTo: 'Equipping an inactive torch can transform it into its equipped/active item variant.',
   transformDeEquipTo: 'Removing that active torch can transform it back to the inventory variant.',
   fluidSource: 'A water source configured as water fills an empty vial with the water subtype.',
-  field: 'A fire-field item stores the field metadata used when the server applies its field behavior.',
+  field: 'Choose fire, poison, energy, trap, water, earth, or wind so spells and field traversal can identify the tile consistently.',
   healthGain: 'Food can restore the configured health amount each regeneration tick.',
   healthTicks: 'Set the interval that separates each health regeneration application.',
   manaGain: 'A regeneration item can restore the configured mana amount on every mana tick.',
@@ -249,7 +250,7 @@ const SPECIAL_FIELDS: FieldDef[] = [
     'food', 'rune', 'key', 'shield',
   ]},
   { key: 'fluidSource', label: 'Fluid Source', type: 'select', options: [...FLUID_SOURCE_OPTIONS], help: FIELD_HELP.fluidSource },
-  { key: 'field', label: 'Field', type: 'select', options: ['', 'fire', 'poison', 'energy'] },
+  { key: 'field', label: 'Field', type: 'select', options: [...ITEM_FIELD_TYPES] },
 ];
 
 const REGEN_FIELDS: FieldDef[] = [

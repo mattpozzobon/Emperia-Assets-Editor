@@ -130,7 +130,10 @@ const AMMO_TYPES = ['', 'arrow', 'bolt'] as const;
 const FLOOR_CHANGES = [
   '', 'north', 'east', 'south', 'west', 'down', 'southalt', 'eastalt',
 ] as const;
-const FIELD_TYPES = ['', 'fire', 'poison', 'energy'] as const;
+/** Stable numeric order shared with the server FieldType contract. */
+export const ITEM_FIELD_TYPES = [
+  '', 'fire', 'poison', 'energy', 'trap', 'water', 'earth', 'wind',
+] as const;
 const FLUID_SOURCES: readonly (string | undefined)[] = [
   '', 'water', 'blood', 'beer', 'slime', 'lemonade',
   undefined, undefined, undefined, undefined, undefined, undefined, undefined,
@@ -160,7 +163,7 @@ const ENUMS_BY_KEY: Readonly<Record<string, readonly (string | undefined)[]>> = 
   ammoType: AMMO_TYPES,
   itemType: ITEM_CATEGORIES,
   floorchange: FLOOR_CHANGES,
-  field: FIELD_TYPES,
+  field: ITEM_FIELD_TYPES,
   fluidSource: FLUID_SOURCES,
   type: THING_TYPES,
   harvestType: HARVEST_TYPES,

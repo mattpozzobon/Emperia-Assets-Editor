@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Circle, Download, FolderOpen, Info, Loader2, Redo2, Undo2 } from 'lucide-react';
+import { Circle, CloudUpload, Download, FolderOpen, Info, Loader2, Redo2, Undo2 } from 'lucide-react';
 import { useOBStore } from '../store';
 import { INITIAL_COMPILE_STATE, runCompile } from '../lib/compile-pipeline';
 import type { CompileState } from '../lib/compile-pipeline';
@@ -18,6 +18,7 @@ export function Header() {
 
   const [compile, setCompile] = useState<CompileState>(INITIAL_COMPILE_STATE);
   const [compileModalOpen, setCompileModalOpen] = useState(false);
+  const [publishToCdn, setPublishToCdn] = useState(() => localStorage.getItem('publish-to-cdn') !== 'false');
   const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -48,8 +49,13 @@ export function Header() {
   const handleCompile = useCallback(async () => {
     if (compile.active) return;
     setCompileModalOpen(true);
-    await runCompile(setCompile, markClean);
-  }, [compile.active, markClean]);
+    await runCompile(setCompile, markClean, { publishToCdn });
+  }, [compile.active, markClean, publishToCdn]);
+
+  const handlePublishPreference = useCallback((enabled: boolean) => {
+    setPublishToCdn(enabled);
+    localStorage.setItem('publish-to-cdn', String(enabled));
+  }, []);
 
   const handleCloseCompileModal = useCallback(() => {
     if (compile.active) return;
@@ -86,7 +92,7 @@ export function Header() {
           className="w-6 h-6"
         />
         <span className="text-sm font-bold text-emperia-text tracking-wide">
-          Emperia Object Builder
+          Emperia Assets Editor
         </span>
         <span className="text-xs text-emperia-muted">v1.0.0</span>
 
@@ -131,6 +137,21 @@ export function Header() {
             </button>
 
             <div className="w-px h-5 bg-emperia-border mx-1" />
+
+            <label
+              className="flex cursor-pointer select-none items-center gap-1.5 rounded px-2 py-1 text-[11px] text-emperia-muted hover:bg-emperia-hover hover:text-emperia-text"
+              title="Publish compiled assets to the Cloudflare R2 CDN after saving"
+            >
+              <input
+                type="checkbox"
+                checked={publishToCdn}
+                disabled={compile.active}
+                onChange={(event) => handlePublishPreference(event.target.checked)}
+                className="h-3 w-3 accent-emperia-accent"
+              />
+              <CloudUpload className="h-3.5 w-3.5" />
+              Publish CDN
+            </label>
 
             <button
               onClick={handleCompile}

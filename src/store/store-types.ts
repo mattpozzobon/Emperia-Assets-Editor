@@ -114,6 +114,10 @@ export interface OBState {
   // Preview state (shared between SpritePreview and LayerPanel)
   activeGroup: number;
   activeLayer: number;
+  /** Pattern X currently selected in the sprite preview (direction for directional sprites). */
+  activeDirection: number;
+  /** Pattern Y currently selected in the sprite preview. */
+  activePatternY: number;
   blendLayers: boolean;
   currentFrame: number;
   playing: boolean;

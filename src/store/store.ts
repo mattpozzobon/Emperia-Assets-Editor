@@ -1,5 +1,5 @@
 /**
- * Global state for the Object Builder using Zustand.
+ * Global state for the Assets Editor using Zustand.
  */
 import { create } from 'zustand';
 import { ITEM_LOCALES, type ThingType, type ThingCategory, type ThingFlags, type FrameGroup, type ItemDefinition, type ItemProperties } from '../lib/types';
@@ -117,6 +117,8 @@ export const useOBStore = create<OBState>((set, get) => ({
 
   activeGroup: 0,
   activeLayer: 0,
+  activeDirection: 2,
+  activePatternY: 0,
   blendLayers: false,
   currentFrame: 0,
   playing: false,
@@ -178,6 +180,8 @@ export const useOBStore = create<OBState>((set, get) => ({
         focusSpriteId: null,
         copiedThing: null,
         activeGroup: 0,
+        activeDirection: 2,
+        activePatternY: 0,
         currentFrame: 0,
         playing: false,
         // Preserve public item definitions, but always use the catalogs embedded in
@@ -330,6 +334,8 @@ export const useOBStore = create<OBState>((set, get) => ({
       focusSpriteId: null,
       copiedThing: null,
       activeGroup: 0,
+      activeDirection: 2,
+      activePatternY: 0,
       currentFrame: 0,
       playing: false,
       itemDefinitions: new Map(),

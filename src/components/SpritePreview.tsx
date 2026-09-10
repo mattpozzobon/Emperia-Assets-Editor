@@ -53,8 +53,10 @@ export function SpritePreview() {
   const outfitColors = useOBStore((s) => s.outfitColors);
   const setOutfitColors = (c: OutfitColorIndices) => useOBStore.setState({ outfitColors: c });
   const [previewMode, setPreviewMode] = useState(false); // true = single direction/pattern preview
-  const [activeDirection, setActiveDirection] = useState(2); // 0=N,1=E,2=S,3=W — default south
-  const [activePatternY, setActivePatternY] = useState(0);
+  const activeDirection = useOBStore((s) => s.activeDirection);
+  const setActiveDirection = (direction: number) => useOBStore.setState({ activeDirection: direction });
+  const activePatternY = useOBStore((s) => s.activePatternY);
+  const setActivePatternY = (patternY: number) => useOBStore.setState({ activePatternY: patternY });
   const showColorPicker = useOBStore((s) => s.showColorPicker);
   const setShowColorPicker = (c: keyof OutfitColorIndices | null) => useOBStore.setState({ showColorPicker: c });
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
@@ -81,10 +83,17 @@ export function SpritePreview() {
   const previewBaseOutfitId = isEffect ? effectReferenceOutfitId : baseOutfitId;
 
   useEffect(() => {
-    useOBStore.setState({ activeGroup: 0, currentFrame: 0, playing: false, activeLayer: 0, blendLayers: false, showColorPicker: null });
+    useOBStore.setState({
+      activeGroup: 0,
+      activeDirection: 2,
+      activePatternY: 0,
+      currentFrame: 0,
+      playing: false,
+      activeLayer: 0,
+      blendLayers: false,
+      showColorPicker: null,
+    });
     setActiveZ(0);
-    setActiveDirection(2);
-    setActivePatternY(0);
     // Character appearances use the same cardinal-direction preview.
     setPreviewMode(isDirectionalAppearance || isEffect || isDistance);
   }, [selectedId, isDirectionalAppearance, isEffect, isDistance]);

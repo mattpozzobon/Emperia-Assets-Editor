@@ -1,6 +1,6 @@
 # Item localization
 
-The Object Builder owns the English item text and the Portuguese, Spanish, and
+The Assets Editor owns the English item text and the Portuguese, Spanish, and
 Polish translations. Compiling writes one `item-catalog.<locale>.json` per
 language into the shared asset package.
 
@@ -27,12 +27,12 @@ regardless of review status; the status exists only for the editorial workflow.
 
 ## Production
 
-1. Set the production Object Builder origin in `ALLOWED_ORIGINS` inside
+1. Set the production Assets Editor origin in `ALLOWED_ORIGINS` inside
    `wrangler.jsonc`.
 2. Run `npx wrangler secret put GOOGLE_TRANSLATE_API_KEY`.
 3. Run `npx wrangler secret put TRANSLATION_ACCESS_TOKEN`.
 4. Run `npm run worker:deploy`.
-5. Build the Object Builder with `VITE_TRANSLATION_API_URL` set to the deployed
+5. Build the Assets Editor with `VITE_TRANSLATION_API_URL` set to the deployed
    Worker URL plus `/translate-items`.
 
 The compilation step never calls Google. It only publishes translations already

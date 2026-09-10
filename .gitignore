@@ -1,5 +1,6 @@
 node_modules/
 .wrangler/
+.r2-upload-manifest.json
 .translation-audit-*.json
 .dev.vars*
 !.dev.vars.example

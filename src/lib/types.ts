@@ -1,5 +1,5 @@
 /**
- * Core data types for the Object Builder.
+ * Core data types for the Assets Editor.
  * Standalone — no game dependencies.
  */
 
