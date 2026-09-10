@@ -9,7 +9,6 @@ import {
   normalizeItemPropertiesForEditor,
   writeItemProperty,
 } from '../lib/item-properties';
-import { compositeThingDataUrl } from '../lib/sprite-decoder';
 import { HelpTooltip } from './HelpTooltip';
 import type { HelpContent } from './HelpTooltip';
 
@@ -179,29 +178,6 @@ const EQUIPMENT_FIELDS: FieldDef[] = [
   ]},
 ];
 
-const HARVEST_FIELDS: FieldDef[] = [
-  { key: 'harvestType', label: 'Harvest Type', type: 'select', options: ['', 'mining', 'herbalism', 'skinning', 'fishing', 'chopping'] },
-  { key: 'harvestResultItemId', label: 'Result Item ID', type: 'number' },
-  { key: 'harvestQuantityMin', label: 'Minimum Quantity', type: 'number' },
-  { key: 'harvestQuantityMax', label: 'Maximum Quantity', type: 'number' },
-  { key: 'harvestTier', label: 'Resource Tier', type: 'number' },
-  { key: 'harvestRequiredMasteryLevel', label: 'Required Mastery Level', type: 'number' },
-  { key: 'harvestRequiredToolType', label: 'Required Tool', type: 'select', options: ['', 'pick', 'knife', 'fishingRod', 'machete'] },
-  { key: 'harvestRequiredToolTier', label: 'Required Tool Tier', type: 'number' },
-  { key: 'harvestToolUseCost', label: 'Tool Use Cost', type: 'number' },
-  { key: 'harvestBaseChanceBps', label: 'Base Chance (bps)', type: 'number' },
-  { key: 'harvestChancePerLevelBps', label: 'Chance / Level (bps)', type: 'number' },
-  { key: 'harvestMaxChanceBps', label: 'Maximum Chance (bps)', type: 'number' },
-  { key: 'harvestAttemptXp', label: 'Attempt XP', type: 'number' },
-  { key: 'harvestSuccessXp', label: 'Success XP', type: 'number' },
-  { key: 'harvestBonusYieldPerLevelBps', label: 'Bonus Yield / Level (bps)', type: 'number' },
-  { key: 'harvestBonusYieldMaxBps', label: 'Maximum Bonus Yield (bps)', type: 'number' },
-  { key: 'harvestSizeMultiplierBps', label: 'Size Multiplier (bps)', type: 'number' },
-  { key: 'harvestMode', label: 'After Harvest', type: 'select', options: ['keep', 'remove', 'transform', 'mark'] },
-  { key: 'harvestTransformItemId', label: 'Transform Item ID', type: 'number' },
-  { key: 'harvestRespawnSeconds', label: 'Respawn (seconds)', type: 'number' },
-];
-
 const AVAILABILITY_FIELDS: FieldDef[] = [
   { key: 'marketable', label: 'Can be used in Market', type: 'boolean' },
   { key: 'autoLootable', label: 'Can be selected for Auto Loot', type: 'boolean' },
@@ -343,7 +319,6 @@ const DETAILS_TAB_LABELS: Record<string, string> = {
   combatBonus: 'Bonuses',
   regen: 'Regeneration',
   toolUses: 'Tool Uses',
-  harvest: 'Harvest',
   availability: 'Market',
 };
 
@@ -358,7 +333,6 @@ const SECTIONS: SectionDef[] = [
   { key: 'combatBonus', title: 'Combat Bonuses', fields: COMBAT_BONUS_FIELDS, group: 'equipment', equippableOnly: true },
   { key: 'regen', title: 'Regeneration', fields: REGEN_FIELDS, group: 'equipment', equippableOnly: true },
   { key: 'toolUses', title: 'Tool Uses', fields: TOOL_USES_FIELDS, group: 'equipment', equippableOnly: true },
-  { key: 'harvest', title: 'Harvest', fields: HARVEST_FIELDS, group: 'general' },
   { key: 'availability', title: 'Market / Auto Loot', fields: AVAILABILITY_FIELDS, group: 'general' },
   { key: 'weight', title: 'Weight / Speed', fields: WEIGHT_FIELDS, group: 'general' },
   { key: 'container', title: 'Container', fields: CONTAINER_FIELDS, group: 'general' },
@@ -494,7 +468,6 @@ export function ServerPropertiesEditor({
             (
               activeDetailsTab === 'general'
               && section.group === 'general'
-              && section.key !== 'harvest'
               && section.key !== 'availability'
             )
             || section.key === activeDetailsTab
@@ -510,7 +483,6 @@ export function ServerPropertiesEditor({
     () => [
       { key: 'general', title: 'General item properties' },
       { key: 'equipment', title: 'Equipment properties' },
-      { key: 'harvest', title: 'Harvest configuration' },
       { key: 'availability', title: 'Market and auto-loot availability' },
     ],
     [],
@@ -955,7 +927,6 @@ function FieldRow({
   }
 
   if (type === 'number') {
-    const showItemPreview = field.key === 'harvestResultItemId';
     return (
       <div className="flex items-center gap-2">
         {labelNode}
@@ -971,11 +942,6 @@ function FieldRow({
           }}
           className="flex-1 bg-emperia-bg border border-emperia-border rounded px-2 py-0.5 text-emperia-text text-xs w-0"
         />
-        {showItemPreview && (
-          <ItemReferenceThumbnail
-            itemId={typeof value === 'number' ? value : Number(value)}
-          />
-        )}
       </div>
     );
   }
@@ -991,73 +957,6 @@ function FieldRow({
         onChange={(e) => onChange(e.target.value || undefined)}
         className="flex-1 bg-emperia-bg border border-emperia-border rounded px-2 py-0.5 text-emperia-text text-xs w-0"
       />
-    </div>
-  );
-}
-
-function ItemReferenceThumbnail({ itemId }: { itemId: number }) {
-  const objectData = useOBStore((state) => state.objectData);
-  const spriteData = useOBStore((state) => state.spriteData);
-  const spriteOverrides = useOBStore((state) => state.spriteOverrides);
-  const itemDefinitions = useOBStore((state) => state.itemDefinitions);
-  const editVersion = useOBStore((state) => state.editVersion);
-
-  const preview = useMemo(() => {
-    if (!objectData || !spriteData || !Number.isInteger(itemId) || itemId <= 0) {
-      return { url: null, valid: false };
-    }
-
-    const appearanceId = objectData.itemAppearances.get(itemId);
-    const thing = appearanceId == null
-      ? undefined
-      : objectData.things.get(appearanceId);
-    const group = thing?.frameGroups[0];
-    if (!thing || !group) return { url: null, valid: false };
-
-    const width = Math.max(1, group.width);
-    const height = Math.max(1, group.height);
-    const tileCount = width * height;
-    return {
-      valid: true,
-      url: compositeThingDataUrl(
-        spriteData,
-        thing.id,
-        width,
-        height,
-        group.sprites.slice(0, tileCount),
-        spriteOverrides,
-      ),
-    };
-  }, [editVersion, itemId, objectData, spriteData, spriteOverrides]);
-
-  const itemName = itemDefinitions.get(itemId)?.properties?.name;
-  const title = preview.valid
-    ? `${typeof itemName === 'string' ? `${itemName} — ` : ''}Item #${itemId}`
-    : Number.isInteger(itemId) && itemId > 0
-      ? `Item #${itemId} has no appearance`
-      : 'Enter a valid result item ID';
-
-  return (
-    <div
-      className={`checkerboard flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded border ${
-        preview.valid ? 'border-emperia-border' : 'border-emperia-border/50'
-      }`}
-      title={title}
-      aria-label={title}
-    >
-      {preview.url ? (
-        <img
-          src={preview.url}
-          alt=""
-          draggable={false}
-          className="pixelated max-h-full max-w-full"
-          style={{ imageRendering: 'pixelated' }}
-        />
-      ) : (
-        <span className="text-[9px] text-emperia-muted/40">
-          {preview.valid ? '—' : '?'}
-        </span>
-      )}
     </div>
   );
 }
