@@ -370,7 +370,7 @@ function CopyPasteMenu({
         </button>
         {copyMenuOpen && (
           <div
-            className="absolute bottom-full mb-1 left-0 bg-emperia-surface border border-emperia-border rounded shadow-lg py-1.5 z-50 min-w-[170px]"
+            className="absolute bottom-full right-0 z-50 mb-1 min-w-[170px] rounded border border-emperia-border bg-emperia-surface py-1.5 shadow-lg"
           >
             {COPY_PARTS.map(({ key, label }) => {
               const checked = key === 'flags' ? copyFlags : key === 'sprites' ? copySprites : copyServer;
