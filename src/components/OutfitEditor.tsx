@@ -428,7 +428,7 @@ function inferEquipSlot(entry: EquipmentCatalogEntry, slotType?: string): EquipS
   if (n.includes('belt')) return 'belt';
   if (n.includes('helmet') || n.includes('hat') || n.includes('crown helmet')) return 'head';
   if (n.includes('shield') || n.includes('orb')) return 'right-hand';
-  if (n.includes('bow') || n.includes('crossbow') || n.includes('sword') || n.includes('axe') || n.includes('club') || n.includes('wand')) return 'left-hand';
+  if (n.includes('bow') || n.includes('crossbow') || n.includes('sword') || n.includes('axe') || n.includes('club') || n.includes('staff') || n.includes('wand')) return 'left-hand';
   return null;
 }
 

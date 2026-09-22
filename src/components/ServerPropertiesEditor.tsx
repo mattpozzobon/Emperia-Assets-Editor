@@ -168,7 +168,7 @@ const IDENTITY_FIELDS: FieldDef[] = [
 
 const EQUIPMENT_FIELDS: FieldDef[] = [
   { key: 'weaponType', label: 'Weapon Type', type: 'select', options: [
-    '', 'sword', 'axe', 'club', 'distance', 'orb', 'shield', 'ammunition', 'fist',
+    '', 'sword', 'axe', 'club', 'distance', 'orb', 'shield', 'ammunition', 'fist', 'staff',
   ]},
   { key: 'slotType', label: 'Slot Type', type: 'select', options: ['', ...EQUIPMENT_SLOT_TYPES], help: FIELD_HELP.slotType },
   { key: 'ammoType', label: 'Ammo Type', type: 'select', options: ['', 'arrow', 'bolt'] },

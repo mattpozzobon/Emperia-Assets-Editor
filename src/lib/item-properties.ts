@@ -116,7 +116,7 @@ export const ITEM_PROPERTY_CODE_BY_KEY: Readonly<Record<string, number>> = {
 
 const WEAPON_TYPES = [
   '', 'sword', 'axe', 'club', 'distance', 'orb', 'shield',
-  'ammunition', 'fist', 'melee', 'ranged',
+  'ammunition', 'fist', 'melee', 'ranged', 'staff',
 ] as const;
 const SLOT_TYPES = [
   '', 'head', 'body', 'legs', 'feet', 'left-hand', 'right-hand',
