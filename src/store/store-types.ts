@@ -2,7 +2,6 @@
  * Shared types for the OB Zustand store.
  */
 import type { ObjectData, SpriteData, ThingType, ThingCategory, LibraryCategory, ThingFlags, FrameGroup, ItemDefinition, EquipmentCatalogEntry, HairDefinition, ItemSeatDefinition, SeatPoseProfile, PoseAction, ItemLocale, ItemLocalizedText, ItemCatalogFile } from '../lib/types';
-import type { OutfitDefinition } from './outfit-slice';
 import type { OutfitColorIndices } from '../lib/outfit-colors';
 
 export interface UndoEntry {
@@ -55,12 +54,6 @@ export interface OBState {
   /** Currently selected hair ID in the Hair tab */
   selectedHairId: number | null;
 
-  // Outfit definitions (outfit builder)
-  outfitDefinitions: OutfitDefinition[];
-  outfitDefsLoaded: boolean;
-  /** Currently selected outfit index in the Outfit Builder tab */
-  selectedOutfitIndex: number | null;
-
   // File System Access API: handles for saving back to source files
   sourceDir: FileSystemDirectoryHandle | null;
   /** Original file names keyed by role */
@@ -73,7 +66,7 @@ export interface OBState {
   };
 
   // UI state
-  centerTab: 'texture' | 'properties' | 'localization' | 'equipment' | 'hair' | 'outfits' | 'poseLab';
+  centerTab: 'texture' | 'properties' | 'localization' | 'equipment' | 'hair' | 'poseLab';
   activeCategory: ThingCategory;
   activeLibrary: LibraryCategory;
   selectedThingId: number | null;
@@ -84,6 +77,8 @@ export interface OBState {
   filterGroup: number;
   /** Filter equipment appearances by their linked item's classification. */
   equipmentFilter: string;
+  /** Ordering of items in the Market library. */
+  marketSort: 'id' | 'name' | 'group';
   /** Number of columns shown in the left object library. */
   libraryColumns: number;
   /** Bumped on every edit to force re-render of dependent components */
@@ -192,15 +187,6 @@ export interface OBState {
   removeHairDefinition: (hairId: number) => void;
   duplicateHairDefinition: (hairId: number) => void;
   setSelectedHairId: (id: number | null) => void;
-
-  // Outfit definition actions
-  loadOutfitDefinitions: (json: Record<string, OutfitDefinition>) => void;
-  addOutfitDefinition: (outfit: OutfitDefinition) => void;
-  updateOutfitDefinition: (index: number, data: Partial<OutfitDefinition>) => void;
-  removeOutfitDefinition: (index: number) => void;
-  duplicateOutfitDefinition: (index: number) => void;
-  setSelectedOutfitIndex: (index: number | null) => void;
-  exportOutfitDefinitionsJson: () => string;
 
   // Derived
   getCategoryRange: (cat: ThingCategory) => { start: number; end: number } | null;

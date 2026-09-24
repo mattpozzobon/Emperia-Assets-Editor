@@ -5,6 +5,7 @@ import { compositeThingDataUrl } from '../lib/sprite-decoder';
 import { poseSetProfileKey, type SeatDirection } from '../lib/types';
 import { useSpriteTooltip } from './SpriteTooltip';
 import { getSpriteIndex } from './ui-primitives';
+import { readItemProperty } from '../lib/item-properties';
 
 const VISIBLE_BUFFER = 20; // extra items to render above/below viewport
 const EFFECT_ANIMATION_TICK_MS = 50;
@@ -30,6 +31,7 @@ export function ThingGrid() {
   const editVersion = useOBStore((s) => s.editVersion); // re-render on sprite replacement
   const filterGroup = useOBStore((s) => s.filterGroup);
   const equipmentFilter = useOBStore((s) => s.equipmentFilter);
+  const marketSort = useOBStore((s) => s.marketSort);
   const cols = useOBStore((s) => s.libraryColumns);
   const itemDefinitions = useOBStore((s) => s.itemDefinitions);
   const appearanceToItemIds = useOBStore((s) => s.appearanceToItemIds);
@@ -55,8 +57,8 @@ export function ThingGrid() {
 
   const tooltip = useSpriteTooltip(spriteData, spriteOverrides);
 
-  const things = useMemo(
-    () => getThingsForCategory(
+  const things = useMemo(() => {
+    const filtered = getThingsForCategory(
       objectData,
       activeCategory,
       searchQuery,
@@ -66,10 +68,50 @@ export function ThingGrid() {
       itemDefinitions,
       appearanceToItemIds,
       itemLocalizations,
-    ),
+      activeLibrary === 'market',
+    );
+    if (activeLibrary !== 'market') return filtered;
+    const marketItem = (thing: (typeof filtered)[number]) => {
+      const itemId = appearanceToItemIds.get(thing.id);
+      const definition = itemId != null ? itemDefinitions.get(itemId) : undefined;
+      return { itemId: itemId ?? thing.id, definition };
+    };
+    const sorted = marketSort === 'id' ? filtered : filtered.sort((left, right) => {
+      const leftItem = marketItem(left);
+      const rightItem = marketItem(right);
+      if (marketSort === 'group') {
+        const groupOrder = (leftItem.definition?.group ?? -1) - (rightItem.definition?.group ?? -1);
+        if (groupOrder !== 0) return groupOrder;
+      } else {
+        const leftName = itemLocalizations.en.get(leftItem.itemId)?.name
+          ?? readItemProperty(leftItem.definition?.properties, 'name');
+        const rightName = itemLocalizations.en.get(rightItem.itemId)?.name
+          ?? readItemProperty(rightItem.definition?.properties, 'name');
+        const nameOrder = String(leftName ?? '').localeCompare(String(rightName ?? ''));
+        if (nameOrder !== 0) return nameOrder;
+      }
+      return leftItem.itemId - rightItem.itemId;
+    });
+    const visibleIds = new Set(sorted.map((thing) => thing.id));
+    const pinnedIds = new Set(selectedIds);
+    if (selectedId != null) pinnedIds.add(selectedId);
+    const pinned = Array.from(pinnedIds)
+      .filter((id) => !visibleIds.has(id))
+      .map((id) => objectData?.things.get(id))
+      .filter((thing): thing is NonNullable<typeof thing> => thing?.category === 'item')
+      .sort((left, right) => left.id - right.id);
+    return [...pinned, ...sorted];
+  },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [objectData, activeCategory, activeLibrary, searchQuery, filterGroup, equipmentFilter, getCategoryRange, itemDefinitions, appearanceToItemIds, itemLocalizations, editVersion],
+    [objectData, activeCategory, activeLibrary, selectedId, selectedIds, searchQuery, filterGroup, equipmentFilter, marketSort, getCategoryRange, itemDefinitions, appearanceToItemIds, itemLocalizations, editVersion],
   );
+
+  useEffect(() => {
+    if (activeLibrary !== 'market' || !objectData) return;
+    if (selectedId == null || !things.some((thing) => thing.id === selectedId)) {
+      setSelectedId(things[0]?.id ?? null);
+    }
+  }, [activeLibrary, objectData, selectedId, setSelectedId, things]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -164,10 +206,19 @@ export function ThingGrid() {
 
   return (<>
     <div
+      id="object-library-grid"
       ref={containerRef}
       onScroll={handleScroll}
-      className="flex-1 overflow-y-auto"
+      tabIndex={-1}
+      className="flex-1 overflow-y-auto focus:outline-none"
     >
+      {activeLibrary === 'market' && things.length === 0 && (
+        <p className="px-3 py-6 text-center text-xs text-emperia-muted">
+          {itemDefinitions.size === 0
+            ? 'Load item definitions to view Market items.'
+            : 'No Market items match the current filters.'}
+        </p>
+      )}
       <div style={{ height: totalHeight, position: 'relative' }}>
         <div
           style={{

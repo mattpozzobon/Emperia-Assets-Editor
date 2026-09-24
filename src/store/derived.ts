@@ -43,6 +43,7 @@ export function getThingsForCategory(
   itemDefinitions?: Map<number, ItemDefinition>,
   appearanceToItemIds?: Map<number, number>,
   itemLocalizations?: Record<ItemLocale, Map<number, ItemLocalizedText>>,
+  marketOnly = false,
 ): ThingType[] {
   if (!objectData) return [];
   const range = getCategoryRange(activeCategory);
@@ -64,6 +65,14 @@ export function getThingsForCategory(
   for (let id = range.start; id <= range.end; id++) {
     const thing = objectData.things.get(id);
     if (!thing) continue;
+
+    if (marketOnly) {
+      const itemId = appearanceToItemIds?.get(id);
+      const marketable = itemId != null
+        ? readItemProperty(itemDefinitions?.get(itemId)?.properties, 'marketable')
+        : undefined;
+      if (marketable !== true && marketable !== 1) continue;
+    }
 
     // Group filter (only for items with definitions loaded)
     if (filterGroup >= 0 && appearanceToItemIds && itemDefinitions) {

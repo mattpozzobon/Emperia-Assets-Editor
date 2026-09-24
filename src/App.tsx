@@ -6,25 +6,21 @@ import { CategoryTabs } from './components/CategoryTabs';
 import { ThingGrid } from './components/ThingGrid';
 import { SpritePreview } from './components/SpritePreview';
 import { PropertyInspector } from './components/PropertyInspector';
+import { ServerPropertiesEditor } from './components/ServerPropertiesEditor';
 import { ThingSpriteGrid } from './components/ThingSpriteGrid';
 import { ObjectSlots } from './components/ObjectSlots';
 import { LayerPanel } from './components/LayerPanel';
 import { EquipmentCatalogEditor } from './components/EquipmentCatalogEditor';
 import { HairEditor } from './components/HairEditor';
-import { OutfitEditor } from './components/OutfitEditor';
 import { PoseLab } from './components/PoseLab';
 import { LocalizationEditor } from './components/LocalizationEditor';
 
-type CenterTab = 'texture' | 'properties' | 'localization' | 'equipment' | 'hair' | 'outfits' | 'poseLab';
+type ItemTab = 'texture' | 'properties' | 'localization';
 
-const TAB_LABELS: Record<CenterTab, string> = {
+const TAB_LABELS: Record<ItemTab, string> = {
   texture: 'Texture',
   properties: 'Properties',
   localization: 'Localization',
-  equipment: 'Equipment',
-  hair: 'Hair',
-  outfits: 'Outfits',
-  poseLab: 'Pose Lab',
 } as const;
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -83,8 +79,8 @@ function SelectedItemBadge() {
 export default function App() {
   const loaded = useOBStore((s) => s.loaded);
   const centerTab = useOBStore((s) => s.centerTab);
+  const activeLibrary = useOBStore((s) => s.activeLibrary);
   const setCenterTab = useOBStore((s) => s.setCenterTab);
-  const setActiveLibrary = useOBStore((s) => s.setActiveLibrary);
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => (
     getSavedPanelWidth('emperia-ob-left-panel-width', 256, 200, 520)
   ));
@@ -164,38 +160,73 @@ export default function App() {
           onPointerDown={(event) => beginResize('left', leftPanelWidth, event)}
         />
 
-        {/* Center: Texture / Properties / Attributes */}
+        {/* Center: category editor and item sub-tabs */}
         <div className="flex-1 flex flex-col bg-emperia-bg overflow-hidden">
-          <div className="flex items-center border-b border-emperia-border shrink-0">
-            {(['texture', 'properties', 'localization', 'equipment', 'hair', 'outfits', 'poseLab'] as CenterTab[]).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => {
-                  if (tab === 'equipment' || tab === 'hair') setActiveLibrary(tab);
-                  else setCenterTab(tab);
-                }}
-                className={`px-4 py-2 text-xs font-medium transition-colors
-                  ${centerTab === tab
-                    ? 'text-emperia-accent border-b-2 border-emperia-accent'
-                    : 'text-emperia-muted hover:text-emperia-text'
-                  }
-                `}
-              >
-                {TAB_LABELS[tab]}
-              </button>
-            ))}
-            <div className="flex-1" />
-            <div className="pr-3">
-              <SelectedItemBadge />
+          {activeLibrary === 'item' && centerTab !== 'poseLab' && (
+            <div className="flex items-center border-b border-emperia-border shrink-0">
+              {(['texture', 'properties', 'localization'] as ItemTab[]).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setCenterTab(tab)}
+                  className={`px-4 py-2 text-xs font-medium transition-colors
+                    ${centerTab === tab
+                      ? 'text-emperia-accent border-b-2 border-emperia-accent'
+                      : 'text-emperia-muted hover:text-emperia-text'
+                    }
+                  `}
+                >
+                  {TAB_LABELS[tab]}
+                </button>
+              ))}
+              <div className="flex-1" />
+              <div className="pr-3">
+                <SelectedItemBadge />
+              </div>
             </div>
-          </div>
+          )}
+          {activeLibrary === 'equipment' && (
+            <div className="flex items-center border-b border-emperia-border shrink-0">
+              {([
+                { key: 'equipment', label: 'Equipment' },
+                { key: 'texture', label: 'Equipment Textures' },
+              ] as const).map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setCenterTab(tab.key)}
+                  className={`px-4 py-2 text-xs font-medium transition-colors ${
+                    centerTab === tab.key
+                      ? 'text-emperia-accent border-b-2 border-emperia-accent'
+                      : 'text-emperia-muted hover:text-emperia-text'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+              <div className="flex-1" />
+              <div className="pr-3">
+                <SelectedItemBadge />
+              </div>
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto">
             {centerTab === 'texture' && <SpritePreview />}
-            {centerTab === 'properties' && <PropertyInspector />}
-            {centerTab === 'localization' && <LocalizationEditor />}
-            {centerTab === 'equipment' && <EquipmentCatalogEditor />}
+            {activeLibrary === 'item' && centerTab === 'properties' && <PropertyInspector />}
+            {activeLibrary === 'market' && centerTab === 'properties' && (
+              <div
+                className="p-4"
+                onChangeCapture={(event) => {
+                  if (!(event.target instanceof HTMLInputElement) || event.target.type !== 'checkbox') return;
+                  requestAnimationFrame(() => {
+                    document.getElementById('object-library-grid')?.focus({ preventScroll: true });
+                  });
+                }}
+              >
+                <ServerPropertiesEditor mode="availability" />
+              </div>
+            )}
+            {activeLibrary === 'item' && centerTab === 'localization' && <LocalizationEditor />}
+            {activeLibrary === 'equipment' && centerTab === 'equipment' && <EquipmentCatalogEditor />}
             {centerTab === 'hair' && <HairEditor />}
-            {centerTab === 'outfits' && <OutfitEditor />}
             {centerTab === 'poseLab' && <PoseLab />}
           </div>
         </div>

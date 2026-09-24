@@ -1,9 +1,11 @@
-import { ArrowRight, Package, Scissors, Shirt, Sparkles, Swords } from 'lucide-react';
+import { Accessibility, ArrowRight, Package, Scissors, Shirt, ShoppingBasket, Sparkles, Swords } from 'lucide-react';
 import { useOBStore } from '../store';
+import { readItemProperty } from '../lib/item-properties';
 import type { LibraryCategory } from '../lib/types';
 
 const CATEGORIES: { key: LibraryCategory; label: string; icon: typeof Package }[] = [
   { key: 'item', label: 'Items', icon: Package },
+  { key: 'market', label: 'Market', icon: ShoppingBasket },
   { key: 'outfit', label: 'Outfits', icon: Shirt },
   { key: 'effect', label: 'Effects', icon: Sparkles },
   { key: 'distance', label: 'Distance', icon: ArrowRight },
@@ -14,7 +16,12 @@ const CATEGORIES: { key: LibraryCategory; label: string; icon: typeof Package }[
 export function LibraryTabs() {
   const objectData = useOBStore((state) => state.objectData);
   const activeLibrary = useOBStore((state) => state.activeLibrary);
+  const centerTab = useOBStore((state) => state.centerTab);
+  const itemDefinitions = useOBStore((state) => state.itemDefinitions);
+  const appearanceToItemIds = useOBStore((state) => state.appearanceToItemIds);
+  useOBStore((state) => state.editVersion);
   const setActiveLibrary = useOBStore((state) => state.setActiveLibrary);
+  const setCenterTab = useOBStore((state) => state.setCenterTab);
 
   if (!objectData) return null;
 
@@ -26,6 +33,11 @@ export function LibraryTabs() {
       case 'distance': return objectData.distanceCount;
       case 'equipment': return objectData.equipmentCount;
       case 'hair': return objectData.hairCount;
+      case 'market': return Array.from(appearanceToItemIds.entries()).filter(([appearanceId, itemId]) => (
+        objectData.things.has(appearanceId)
+        && (readItemProperty(itemDefinitions.get(itemId)?.properties, 'marketable') === true
+          || readItemProperty(itemDefinitions.get(itemId)?.properties, 'marketable') === 1)
+      )).length;
     }
   };
 
@@ -39,17 +51,28 @@ export function LibraryTabs() {
           key={key}
           onClick={() => setActiveLibrary(key)}
           className={`flex items-center gap-1.5 border-b-2 px-2.5 text-[11px] transition-colors ${
-            activeLibrary === key
+            activeLibrary === key && centerTab !== 'poseLab'
               ? 'border-emperia-accent bg-emperia-accent/10 text-emperia-accent'
               : 'border-transparent text-emperia-muted hover:bg-emperia-hover hover:text-emperia-text'
           }`}
-          title={`${label}: ${getCategoryCount(key)} objects`}
+          title={`${label}: ${getCategoryCount(key)} ${key === 'market' ? 'items' : 'objects'}`}
         >
           <Icon className="h-3.5 w-3.5 shrink-0" />
           <span>{label}</span>
           <span className="text-[9px] opacity-55">{getCategoryCount(key)}</span>
         </button>
       ))}
+      <button
+        onClick={() => setCenterTab('poseLab')}
+        className={`flex items-center gap-1.5 border-b-2 px-2.5 text-[11px] transition-colors ${
+          centerTab === 'poseLab'
+            ? 'border-emperia-accent bg-emperia-accent/10 text-emperia-accent'
+            : 'border-transparent text-emperia-muted hover:bg-emperia-hover hover:text-emperia-text'
+        }`}
+      >
+        <Accessibility className="h-3.5 w-3.5 shrink-0" />
+        <span>Pose Lab</span>
+      </button>
     </nav>
   );
 }

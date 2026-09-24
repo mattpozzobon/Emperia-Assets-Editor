@@ -13,10 +13,9 @@ import { createHairCatalogSlice } from './hair-catalog-slice';
 import { createEquipmentCatalogSlice } from './equipment-catalog-slice';
 import { createCompactAtlasAction } from './compact-atlas';
 import { createSpriteGroupSlice } from './sprite-group-slice';
-import { createOutfitSlice } from './outfit-slice';
 import { sourceHash, sourceTextFromDefinition } from '../lib/item-localization';
 import { consolidateItemIdentity } from '../lib/item-identity';
-import { hasEquipmentClassification } from '../lib/item-properties';
+import { hasEquipmentClassification, readItemProperty } from '../lib/item-properties';
 
 function emptyItemLocalizations() {
   return {
@@ -89,9 +88,6 @@ export const useOBStore = create<OBState>((set, get) => ({
   definitionsLoaded: false,
   itemLocalizations: emptyItemLocalizations(),
   selectedHairId: null,
-  outfitDefinitions: [],
-  outfitDefsLoaded: false,
-  selectedOutfitIndex: null,
   sourceDir: null,
   sourceNames: {},
   sourceHandles: {},
@@ -104,6 +100,7 @@ export const useOBStore = create<OBState>((set, get) => ({
   searchQuery: '',
   filterGroup: -1,
   equipmentFilter: 'all',
+  marketSort: 'id',
   libraryColumns: getSavedLibraryColumns(),
   editVersion: 0,
   focusSpriteId: null,
@@ -283,8 +280,42 @@ export const useOBStore = create<OBState>((set, get) => ({
   },
 
   setActiveLibrary: (cat) => {
+    const current = get();
+    if (cat === 'item' && current.activeLibrary === 'market') {
+      set({
+        activeLibrary: 'item',
+        centerTab: 'properties',
+        selectedThingIds: new Set(),
+        searchQuery: '',
+        filterGroup: -1,
+      });
+      return;
+    }
+    if (cat === 'market') {
+      const selectedItem = current.selectedThingId != null
+        && current.objectData?.things.get(current.selectedThingId)?.category === 'item'
+        ? current.selectedThingId
+        : null;
+      const firstMarketItem = Array.from(current.appearanceToItemIds.entries())
+        .filter(([appearanceId, itemId]) => (
+          current.objectData?.things.has(appearanceId)
+          && (readItemProperty(current.itemDefinitions.get(itemId)?.properties, 'marketable') === true
+            || readItemProperty(current.itemDefinitions.get(itemId)?.properties, 'marketable') === 1)
+        ))
+        .sort(([left], [right]) => left - right)[0];
+      set({
+        activeCategory: 'item',
+        activeLibrary: 'market',
+        centerTab: 'properties',
+        selectedThingId: selectedItem ?? firstMarketItem?.[0] ?? null,
+        selectedThingIds: new Set(),
+        searchQuery: '',
+        filterGroup: -1,
+      });
+      return;
+    }
     get().setActiveCategory(cat);
-    if (cat === 'equipment' || cat === 'hair') set({ centerTab: cat });
+    set({ centerTab: cat === 'hair' ? 'hair' : 'texture' });
   },
 
   setSelectedThingId: (id) => set({ selectedThingId: id, selectedThingIds: new Set() }),
@@ -296,6 +327,8 @@ export const useOBStore = create<OBState>((set, get) => ({
       for (const rid of range) next.add(rid);
     } else {
       // Ctrl+click: toggle single
+      const focusedId = get().selectedThingId;
+      if (prev.size === 0 && focusedId != null) next.add(focusedId);
       if (next.has(id)) next.delete(id); else next.add(id);
     }
     set({ selectedThingIds: next, selectedThingId: id });
@@ -318,12 +351,14 @@ export const useOBStore = create<OBState>((set, get) => ({
       loaded: false,
       loading: false,
       error: null,
+      centerTab: 'texture',
       activeCategory: 'item',
       activeLibrary: 'item',
       selectedThingId: null,
       searchQuery: '',
       filterGroup: -1,
       equipmentFilter: 'all',
+      marketSort: 'id',
       dirty: false,
       dirtyIds: new Set(),
       undoStack: [],
@@ -1128,7 +1163,6 @@ export const useOBStore = create<OBState>((set, get) => ({
   ...createHairCatalogSlice(set, get),
   ...createCompactAtlasAction(set, get),
   ...createSpriteGroupSlice(set, get),
-  ...createOutfitSlice(set, get),
 
   // ─── Utility ────────────────────────────────────────────────────────────────
 

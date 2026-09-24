@@ -4,7 +4,7 @@
  */
 
 export type ThingCategory = 'item' | 'outfit' | 'equipment' | 'hair' | 'effect' | 'distance';
-export type LibraryCategory = ThingCategory;
+export type LibraryCategory = ThingCategory | 'market';
 
 export interface FrameGroup {
   type: number;

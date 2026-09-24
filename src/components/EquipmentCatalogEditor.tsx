@@ -375,7 +375,7 @@ function OutfitThumbnail({ equipmentAppearanceId, size = 32, direction = 2 }: { 
       });
     }
     setSelectedThingId(internalId);
-    setCenterTab('texture');
+    setCenterTab('equipment');
   };
 
   return (
@@ -870,10 +870,12 @@ function WeaponGroupRow({
   group,
   onUpdate,
   onRemove,
+  selectedAppearanceId,
 }: {
   group: WeaponGroup;
   onUpdate: (index: number, entry: EquipmentCatalogEntry) => void;
   onRemove: (index: number) => void;
+  selectedAppearanceId?: number | null;
 }) {
   const [showPickerFor, setShowPickerFor] = useState<'left' | 'right' | null>(null);
 
@@ -881,24 +883,29 @@ function WeaponGroupRow({
   const def = itemDefinitions.get(group.itemId);
   const serverNameValue = readItemProperty(def?.properties, 'name');
   const serverName = typeof serverNameValue === 'string' ? serverNameValue : undefined;
+  const isSelected = selectedAppearanceId != null && (
+    group.leftEntry?.entry.equipmentAppearanceId === selectedAppearanceId
+    || group.rightEntry?.entry.equipmentAppearanceId === selectedAppearanceId
+  );
 
   return (
-    <div className="px-3 py-2 hover:bg-emperia-hover/50 border-b border-emperia-border/30 group">
-      <div className="flex items-center gap-2 mb-1.5">
-        <ItemThumbnail itemId={group.itemId} size={32} />
-        <span className="text-xs text-emperia-text font-medium truncate flex-1">
-          {serverName || `Item ${group.itemId}`}
-        </span>
-        <span className="text-[10px] text-amber-400 font-mono" title="Item ID">{group.itemId}</span>
-      </div>
-      <div className="flex items-center gap-4 pl-2">
+    <div className={`group flex items-center gap-2 border-b border-emperia-border/30 px-3 py-1.5 ${
+      isSelected
+        ? 'bg-emperia-accent/10 ring-1 ring-inset ring-emperia-accent'
+        : 'hover:bg-emperia-hover/50'
+    }`}>
+      <ItemThumbnail itemId={group.itemId} size={40} />
+
+      <div className="flex items-center gap-2 shrink-0">
         {/* Left hand */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[9px] text-emperia-muted w-8">Left</span>
+        <div
+          data-equipment-appearance-id={group.leftEntry?.entry.equipmentAppearanceId}
+          className="flex items-center gap-1"
+          title="Left hand"
+        >
           {group.leftEntry ? (
             <>
-              <OutfitThumbnail equipmentAppearanceId={group.leftEntry.entry.equipmentAppearanceId} size={36} />
-              <span className="text-[10px] text-cyan-400 font-mono">{group.leftEntry.entry.equipmentAppearanceId}</span>
+              <OutfitThumbnail equipmentAppearanceId={group.leftEntry.entry.equipmentAppearanceId} size={40} />
               <button
                 onClick={() => setShowPickerFor('left')}
                 className="px-1 py-0.5 rounded text-[9px] bg-emperia-accent/10 text-emperia-accent hover:bg-emperia-accent/20 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -915,22 +922,22 @@ function WeaponGroupRow({
           ) : (
             <button
               onClick={() => setShowPickerFor('left')}
-              className="text-[9px] text-emperia-muted/50 hover:text-emperia-accent underline"
+              className="flex h-10 w-10 items-center justify-center rounded border border-dashed border-emperia-border text-[9px] text-emperia-muted/50 hover:border-emperia-accent hover:text-emperia-accent"
             >
-              Assign
+              Left
             </button>
           )}
         </div>
 
-        <div className="w-px h-6 bg-emperia-border/40" />
-
         {/* Right hand */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[9px] text-emperia-muted w-8">Right</span>
+        <div
+          data-equipment-appearance-id={group.rightEntry?.entry.equipmentAppearanceId}
+          className="flex items-center gap-1"
+          title="Right hand"
+        >
           {group.rightEntry ? (
             <>
-              <OutfitThumbnail equipmentAppearanceId={group.rightEntry.entry.equipmentAppearanceId} size={36} />
-              <span className="text-[10px] text-cyan-400 font-mono">{group.rightEntry.entry.equipmentAppearanceId}</span>
+              <OutfitThumbnail equipmentAppearanceId={group.rightEntry.entry.equipmentAppearanceId} size={40} />
               <button
                 onClick={() => setShowPickerFor('right')}
                 className="px-1 py-0.5 rounded text-[9px] bg-emperia-accent/10 text-emperia-accent hover:bg-emperia-accent/20 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -947,20 +954,26 @@ function WeaponGroupRow({
           ) : (
             <button
               onClick={() => setShowPickerFor('right')}
-              className="text-[9px] text-emperia-muted/50 hover:text-emperia-accent underline"
+              className="flex h-10 w-10 items-center justify-center rounded border border-dashed border-emperia-border text-[9px] text-emperia-muted/50 hover:border-emperia-accent hover:text-emperia-accent"
             >
-              Assign
+              Right
             </button>
           )}
         </div>
       </div>
 
+      <div className="min-w-0 flex-1">
+        <span className="block truncate text-xs font-medium text-emperia-text">
+          {serverName || `Item ${group.itemId}`}
+        </span>
+        <span className="text-[9px] text-emperia-muted/60">Left and right hand</span>
+      </div>
+      <span className="text-[10px] text-amber-400 font-mono" title="Item ID">{group.itemId}</span>
+
       {/* Other entries that aren't left/right */}
       {group.otherEntries.map(({ entry, index }) => (
-        <div key={index} className="flex items-center gap-2 pl-2 mt-1">
-          <span className="text-[9px] text-emperia-muted w-8 truncate">{entry.name}</span>
+        <div key={index} data-equipment-appearance-id={entry.equipmentAppearanceId}>
           <OutfitThumbnail equipmentAppearanceId={entry.equipmentAppearanceId} size={32} />
-          <span className="text-[10px] text-cyan-400 font-mono">{entry.equipmentAppearanceId}</span>
         </div>
       ))}
 
@@ -968,12 +981,11 @@ function WeaponGroupRow({
         <OutfitSpritePicker
           onSelect={(displayId) => {
             const addCatalogEntry = useOBStore.getState().addEquipmentCatalogEntry;
-            const updateCatalogEntry = useOBStore.getState().updateEquipmentCatalogEntry;
             const hand = showPickerFor === 'left' ? 'Left-Hand' : 'Right-Hand';
             if (showPickerFor === 'left' && group.leftEntry) {
-              updateCatalogEntry(group.leftEntry.entry, { ...group.leftEntry.entry, equipmentAppearanceId: displayId });
+              onUpdate(group.leftEntry.index, { ...group.leftEntry.entry, equipmentAppearanceId: displayId });
             } else if (showPickerFor === 'right' && group.rightEntry) {
-              updateCatalogEntry(group.rightEntry.entry, { ...group.rightEntry.entry, equipmentAppearanceId: displayId });
+              onUpdate(group.rightEntry.index, { ...group.rightEntry.entry, equipmentAppearanceId: displayId });
             } else {
               addCatalogEntry({ name: `${hand} (${group.baseName})`, itemId: group.itemId, equipmentAppearanceId: displayId });
             }
@@ -1156,7 +1168,6 @@ export function EquipmentCatalogEditor() {
 
   // Group weapons by item ID for the weapon view
   const weaponGroups = useMemo((): WeaponGroup[] => {
-    if (viewMode !== 'weapons') return [];
     const groups = new Map<number, WeaponGroup>();
 
     for (const { entry, index } of filteredEntries) {
@@ -1179,7 +1190,41 @@ export function EquipmentCatalogEditor() {
     }
 
     return Array.from(groups.values());
-  }, [filteredEntries, itemDefinitions, viewMode]);
+  }, [filteredEntries, itemDefinitions]);
+
+  const groupedListRows = useMemo(() => {
+    const groupsByItem = new Map(
+      weaponGroups
+        .filter((group) => group.leftEntry && group.rightEntry)
+        .map((group) => [group.itemId, group]),
+    );
+    const groupedEntryIndexes = new Set<number>();
+    for (const group of groupsByItem.values()) {
+      if (group.leftEntry) groupedEntryIndexes.add(group.leftEntry.index);
+      if (group.rightEntry) groupedEntryIndexes.add(group.rightEntry.index);
+      for (const other of group.otherEntries) groupedEntryIndexes.add(other.index);
+    }
+
+    const emittedGroups = new Set<number>();
+    const rows: Array<
+      | { kind: 'group'; group: WeaponGroup }
+      | { kind: 'entry'; entry: EquipmentCatalogEntry; index: number }
+    > = [];
+
+    for (const item of filteredEntries) {
+      const group = groupsByItem.get(item.entry.itemId);
+      if (group && groupedEntryIndexes.has(item.index)) {
+        if (!emittedGroups.has(group.itemId)) {
+          rows.push({ kind: 'group', group });
+          emittedGroups.add(group.itemId);
+        }
+        continue;
+      }
+      rows.push({ kind: 'entry', ...item });
+    }
+
+    return rows;
+  }, [filteredEntries, weaponGroups]);
 
   if (!objectData) {
     return (
@@ -1321,14 +1366,22 @@ export function EquipmentCatalogEditor() {
                     selected={selectedEquipmentAppearanceId === appearanceId}
                   />
                 ))}
-                {filteredEntries.map(({ entry, index }) => (
-                  <EntryRow
-                    key={`${index}-${entry.itemId}-${entry.equipmentAppearanceId}`}
-                    entry={entry}
-                    index={index}
+                {groupedListRows.map((row) => row.kind === 'group' ? (
+                  <WeaponGroupRow
+                    key={`group-${row.group.itemId}`}
+                    group={row.group}
                     onUpdate={updateCatalogEntry}
                     onRemove={removeCatalogEntry}
-                    selected={selectedEquipmentAppearanceId === entry.equipmentAppearanceId}
+                    selectedAppearanceId={selectedEquipmentAppearanceId}
+                  />
+                ) : (
+                  <EntryRow
+                    key={`${row.index}-${row.entry.itemId}-${row.entry.equipmentAppearanceId}`}
+                    entry={row.entry}
+                    index={row.index}
+                    onUpdate={updateCatalogEntry}
+                    onRemove={removeCatalogEntry}
+                    selected={selectedEquipmentAppearanceId === row.entry.equipmentAppearanceId}
                   />
                 ))}
               </>
@@ -1345,6 +1398,7 @@ export function EquipmentCatalogEditor() {
                 group={group}
                 onUpdate={updateCatalogEntry}
                 onRemove={removeCatalogEntry}
+                selectedAppearanceId={selectedEquipmentAppearanceId}
               />
             ))
           )

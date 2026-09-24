@@ -1,12 +1,13 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useOBStore } from '../store';
-import type { ItemProperties, ExclusiveSlotDef } from '../lib/types';
+import type { ItemProperties, ExclusiveSlotDef, ItemDefinition, ObjectData } from '../lib/types';
 import { ITEM_SLOT_TYPES } from '../lib/item-slot-types';
 import { inferVisualFlagsFromIdentity, ITEM_IDENTITY_GROUPS } from '../lib/item-identity';
 import {
   hasEquipmentClassification,
   ITEM_FIELD_TYPES,
   normalizeItemPropertiesForEditor,
+  readItemProperty,
   writeItemProperty,
 } from '../lib/item-properties';
 import { HelpTooltip } from './HelpTooltip';
@@ -346,12 +347,47 @@ const EQUIPMENT_DETAIL_TAB_KEYS = new Set(
     .map((section) => section.key),
 );
 
+function resolveItemIdForAppearance(
+  selectedId: number,
+  objectData: ObjectData | null,
+  itemDefinitions: Map<number, ItemDefinition>,
+  appearanceToItemIds: Map<number, number>,
+): number | undefined {
+  const primaryItemId = appearanceToItemIds.get(selectedId);
+  let resolvedItemId = primaryItemId != null && itemDefinitions.has(primaryItemId)
+    ? primaryItemId
+    : undefined;
+  let fallbackItemId = primaryItemId;
+  for (const [candidateItemId, appearanceId] of objectData?.itemAppearances ?? []) {
+    if (appearanceId !== selectedId) continue;
+    fallbackItemId ??= candidateItemId;
+    const candidate = itemDefinitions.get(candidateItemId);
+    if (!candidate) continue;
+    const current = resolvedItemId != null ? itemDefinitions.get(resolvedItemId) : undefined;
+    const candidateIsEquipment = hasEquipmentClassification(candidate.properties);
+    const currentIsEquipment = hasEquipmentClassification(current?.properties);
+    if (
+      !current
+      || (candidateIsEquipment && !currentIsEquipment)
+      || (
+        candidateIsEquipment === currentIsEquipment
+        && candidateItemId === selectedId
+        && resolvedItemId !== selectedId
+      )
+    ) {
+      resolvedItemId = candidateItemId;
+    }
+  }
+  return resolvedItemId ?? fallbackItemId;
+}
+
 export function ServerPropertiesEditor({
   mode = 'all',
 }: {
-  mode?: 'all' | 'identity' | 'details';
+  mode?: 'all' | 'identity' | 'details' | 'availability';
 }) {
   const selectedId = useOBStore((s) => s.selectedThingId);
+  const selectedThingIds = useOBStore((s) => s.selectedThingIds);
   const objectData = useOBStore((s) => s.objectData);
   const activeCategory = useOBStore((s) => s.activeCategory);
   const itemDefinitions = useOBStore((s) => s.itemDefinitions);
@@ -361,49 +397,30 @@ export function ServerPropertiesEditor({
   useOBStore((s) => s.editVersion);
 
   const thing = selectedId != null ? objectData?.things.get(selectedId) ?? null : null;
-  const itemId = useMemo(() => {
-    if (selectedId == null) return undefined;
-    const primaryItemId = appearanceToItemIds.get(selectedId);
-    let resolvedItemId = primaryItemId != null
-      && itemDefinitions.has(primaryItemId)
-      ? primaryItemId
-      : undefined;
-    let fallbackItemId = primaryItemId;
-    for (const [candidateItemId, appearanceId] of objectData?.itemAppearances ?? []) {
-      if (appearanceId !== selectedId) continue;
-      fallbackItemId ??= candidateItemId;
-      const candidate = itemDefinitions.get(candidateItemId);
-      if (!candidate) continue;
-      const current = resolvedItemId != null
-        ? itemDefinitions.get(resolvedItemId)
-        : undefined;
-      const candidateIsEquipment = hasEquipmentClassification(candidate.properties);
-      const currentIsEquipment = hasEquipmentClassification(current?.properties);
-      if (
-        !current
-        || (candidateIsEquipment && !currentIsEquipment)
-        || (
-          candidateIsEquipment === currentIsEquipment
-          && candidateItemId === selectedId
-          && resolvedItemId !== selectedId
-        )
-      ) {
-        resolvedItemId = candidateItemId;
-      }
-    }
-    return resolvedItemId ?? fallbackItemId;
-  }, [
-    appearanceToItemIds,
-    itemDefinitions,
-    objectData?.itemAppearances,
-    selectedId,
-  ]);
+  const itemId = useMemo(() => selectedId == null
+    ? undefined
+    : resolveItemIdForAppearance(selectedId, objectData, itemDefinitions, appearanceToItemIds),
+  [appearanceToItemIds, itemDefinitions, objectData, selectedId]);
   const def = itemId != null ? itemDefinitions.get(itemId) ?? null : null;
 
   const props: ItemProperties = useMemo(
     () => normalizeItemPropertiesForEditor(def?.properties),
     [def],
   );
+  const displayProps = useMemo(() => {
+    if (mode !== 'availability' || selectedThingIds.size === 0) return props;
+    const allMarketable = Array.from(selectedThingIds).every((appearanceId) => {
+      const selectedItemId = resolveItemIdForAppearance(
+        appearanceId, objectData, itemDefinitions, appearanceToItemIds,
+      );
+      const marketable = readItemProperty(
+        selectedItemId != null ? itemDefinitions.get(selectedItemId)?.properties : undefined,
+        'marketable',
+      );
+      return marketable === true || marketable === 1;
+    });
+    return { ...props, marketable: allMarketable };
+  }, [appearanceToItemIds, itemDefinitions, mode, objectData, props, selectedThingIds]);
   const isEquippable = useMemo(
     () => hasEquipmentClassification(def?.properties),
     [def],
@@ -417,6 +434,24 @@ export function ServerPropertiesEditor({
     : detailsTab;
 
   const setProperty = useCallback((key: string, value: string | number | boolean | undefined) => {
+    if (mode === 'availability' && key === 'marketable' && selectedThingIds.size > 0) {
+      for (const appearanceId of selectedThingIds) {
+        const state = useOBStore.getState();
+        if (state.objectData?.things.get(appearanceId)?.category !== 'item') continue;
+        const selectedItemId = resolveItemIdForAppearance(
+          appearanceId, state.objectData, state.itemDefinitions, state.appearanceToItemIds,
+        );
+        const existing = selectedItemId != null ? state.itemDefinitions.get(selectedItemId) : undefined;
+        const currentValue = readItemProperty(existing?.properties, 'marketable');
+        if ((currentValue === true || currentValue === 1) === value) continue;
+        const nextProps = existing?.properties ? { ...existing.properties } : {};
+        writeItemProperty(nextProps, key, value);
+        state.updateItemDefinition(appearanceId, {
+          properties: Object.keys(nextProps).length > 0 ? nextProps : null,
+        });
+      }
+      return;
+    }
     if (selectedId == null) return;
     const current = itemId != null ? itemDefinitions.get(itemId) : undefined;
     const currentProps = current?.properties ? { ...current.properties } : {};
@@ -431,7 +466,9 @@ export function ServerPropertiesEditor({
   }, [
     itemId,
     itemDefinitions,
+    mode,
     selectedId,
+    selectedThingIds,
     thing,
     updateItemDefinition,
     updateThingFlags,
@@ -461,6 +498,7 @@ export function ServerPropertiesEditor({
       (
         mode === 'all'
         || (mode === 'identity' && section.key === 'identity')
+        || (mode === 'availability' && (section.key === 'availability' || section.key === 'equipment'))
         || (
           mode === 'details'
           && section.key !== 'identity'
@@ -475,7 +513,9 @@ export function ServerPropertiesEditor({
         )
       )
       && (!section.equippableOnly || isEquippable)
-    )),
+    )).sort((left, right) => mode === 'availability'
+      ? Number(right.key === 'availability') - Number(left.key === 'availability')
+      : 0),
     [activeDetailsTab, isEquippable, mode],
   );
 
@@ -523,7 +563,11 @@ export function ServerPropertiesEditor({
     ) {
       set.add(activeDetailsTab === 'general' ? 'equipment' : activeDetailsTab);
     }
-    if (mode !== 'details') set.add('identity');
+    if (mode === 'availability') {
+      set.add('availability');
+      set.add('equipment');
+    }
+    if (mode === 'all' || mode === 'identity') set.add('identity');
     return set;
   }, [activeDetailsTab, isEquippable, mode, props]);
 
@@ -633,6 +677,7 @@ export function ServerPropertiesEditor({
       {visibleSections.map((sec, index) => (
         <div key={sec.key}>
           {mode !== 'details'
+            && mode !== 'availability'
             && sec.group !== 'identity'
             && (index === 0 || visibleSections[index - 1]?.group !== sec.group)
             && (
@@ -646,12 +691,12 @@ export function ServerPropertiesEditor({
           <FieldSection
             title={sec.title}
             fields={sec.fields}
-            props={props}
+            props={mode === 'availability' && sec.key === 'availability' ? displayProps : props}
             setProperty={setProperty}
             expanded={expanded.has(sec.key)}
             onToggle={() => toggle(sec.key)}
           />
-          {sec.key === 'equipment' && expanded.has('equipment') && !isEquippable && (
+          {mode !== 'availability' && sec.key === 'equipment' && expanded.has('equipment') && !isEquippable && (
             <p className="px-2 pt-1 text-[9px] leading-relaxed text-emperia-muted/70">
               Set Weapon Type or Slot Type to enable combat stats, requirements,
               skill bonuses, absorption, stat bonuses, combat bonuses,

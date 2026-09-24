@@ -32,6 +32,7 @@ export function CategoryTabs() {
   const filterGroup = useOBStore((s) => s.filterGroup);
   const setFilterGroup = useOBStore((s) => s.setFilterGroup);
   const equipmentFilter = useOBStore((s) => s.equipmentFilter);
+  const marketSort = useOBStore((s) => s.marketSort);
   const setEquipmentFilter = useOBStore((s) => s.setEquipmentFilter);
   const itemDefinitions = useOBStore((s) => s.itemDefinitions);
   const libraryColumns = useOBStore((s) => s.libraryColumns);
@@ -58,7 +59,7 @@ export function CategoryTabs() {
     <div className="shrink-0">
       {/* Row 1: Search */}
       <div className="px-2 py-1.5 border-b border-emperia-border flex items-center gap-1">
-        {definitionsLoaded && activeLibrary === 'item' && (
+        {definitionsLoaded && (activeLibrary === 'item' || activeLibrary === 'market') && (
           <select
             value={filterGroup}
             onChange={(e) => setFilterGroup(parseInt(e.target.value, 10))}
@@ -69,6 +70,18 @@ export function CategoryTabs() {
             {Object.entries(GROUP_LABELS).map(([g, label]) => (
               <option key={g} value={g}>{label}</option>
             ))}
+          </select>
+        )}
+        {activeLibrary === 'market' && (
+          <select
+            value={marketSort}
+            onChange={(event) => useOBStore.setState({ marketSort: event.target.value as typeof marketSort })}
+            className="text-[10px] bg-emperia-surface border border-emperia-border rounded px-1 py-1 text-emperia-text outline-none cursor-pointer max-w-[85px] shrink-0"
+            aria-label="Sort Market items"
+          >
+            <option value="id">ID</option>
+            <option value="name">Name</option>
+            <option value="group">Group</option>
           </select>
         )}
         {definitionsLoaded && activeLibrary === 'equipment' && (
@@ -136,7 +149,7 @@ export function CategoryTabs() {
             ))}
           </select>
         </label>
-        {(
+        {activeLibrary !== 'market' && (
           <>
             <button
               onClick={() => addThing(activeCategory)}
