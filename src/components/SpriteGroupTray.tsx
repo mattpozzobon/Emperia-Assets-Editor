@@ -10,6 +10,7 @@ const TILE = 32;
 const MIN_TRAY_HEIGHT = 120;
 const DEFAULT_TRAY_HEIGHT = 260;
 const MAX_TRAY_HEIGHT_RATIO = 0.75;
+const MAX_ANIMATION_FRAMES = 255;
 
 function GroupRow({ group, index, placed }: { group: SpriteGroup; index: number; placed: boolean }) {
   const spriteData = useOBStore((s) => s.spriteData);
@@ -127,6 +128,104 @@ function placeGroupOnFrame(
   return placed;
 }
 
+/**
+ * Resize a frame group without changing the meaning of its existing sprite slots.
+ * A plain array resize is not enough because width, height and animation count are
+ * all part of the flattened sprite index.
+ */
+function resizeFrameGroup(
+  frameGroup: FrameGroup,
+  width: number,
+  height: number,
+  animationLength: number,
+) {
+  const previous: FrameGroup = {
+    ...frameGroup,
+    animationLengths: frameGroup.animationLengths.map((length) => ({ ...length })),
+    sprites: [...frameGroup.sprites],
+  };
+
+  frameGroup.width = width;
+  frameGroup.height = height;
+  frameGroup.exactSizeHint = Math.max(width, height);
+  frameGroup.animationLength = animationLength;
+  frameGroup.animationLengths = Array.from(
+    { length: animationLength },
+    (_, frame) => previous.animationLengths[frame] ?? { min: 100, max: 100 },
+  );
+  frameGroup.sprites = new Array(
+    width * height * frameGroup.layers * frameGroup.patternX * frameGroup.patternY
+      * frameGroup.patternZ * animationLength,
+  ).fill(0);
+
+  const framesToCopy = Math.min(previous.animationLength, animationLength);
+  const widthToCopy = Math.min(previous.width, width);
+  const heightToCopy = Math.min(previous.height, height);
+  for (let frame = 0; frame < framesToCopy; frame++) {
+    for (let patternZ = 0; patternZ < frameGroup.patternZ; patternZ++) {
+      for (let patternY = 0; patternY < frameGroup.patternY; patternY++) {
+        for (let patternX = 0; patternX < frameGroup.patternX; patternX++) {
+          for (let layer = 0; layer < frameGroup.layers; layer++) {
+            for (let tileY = 0; tileY < heightToCopy; tileY++) {
+              for (let tileX = 0; tileX < widthToCopy; tileX++) {
+                const previousIndex = getSpriteIndex(
+                  previous,
+                  frame,
+                  patternX,
+                  patternY,
+                  patternZ,
+                  layer,
+                  tileX,
+                  tileY,
+                );
+                const nextIndex = getSpriteIndex(
+                  frameGroup,
+                  frame,
+                  patternX,
+                  patternY,
+                  patternZ,
+                  layer,
+                  tileX,
+                  tileY,
+                );
+                frameGroup.sprites[nextIndex] = previous.sprites[previousIndex] ?? 0;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+function getEmptyFrames(frameGroup: FrameGroup, patternX: number, patternY: number) {
+  return Array.from(
+    { length: frameGroup.animationLength },
+    (_, frame) => frame,
+  ).filter((frame) => {
+    for (let patternZ = 0; patternZ < frameGroup.patternZ; patternZ++) {
+      for (let layer = 0; layer < frameGroup.layers; layer++) {
+        for (let tileY = 0; tileY < frameGroup.height; tileY++) {
+          for (let tileX = 0; tileX < frameGroup.width; tileX++) {
+            const index = getSpriteIndex(
+              frameGroup,
+              frame,
+              patternX,
+              patternY,
+              patternZ,
+              layer,
+              tileX,
+              tileY,
+            );
+            if (frameGroup.sprites[index] > 0) return false;
+          }
+        }
+      }
+    }
+    return true;
+  });
+}
+
 export function SpriteGroupTray() {
   const spriteGroups = useOBStore((s) => s.spriteGroups);
   const clearSpriteGroups = useOBStore((s) => s.clearSpriteGroups);
@@ -190,7 +289,8 @@ export function SpriteGroupTray() {
     return set;
   }, [spriteGroups, usedSpriteIds]);
 
-  // Fill all unplaced groups into sequential animation frames
+  // Fill all unplaced groups into sequential animation frames. When every
+  // pending group has the same dimensions, infer the object size from them.
   const handleFillFrames = useCallback(() => {
     if (!thing || !frameGroup) return;
 
@@ -198,32 +298,32 @@ export function SpriteGroupTray() {
     if (unplaced.length === 0) return;
 
     let anyPlaced = false;
+    const firstGroup = unplaced[0];
+    const hasUniformDimensions = unplaced.every(
+      (group) => group.cols === firstGroup.cols && group.rows === firstGroup.rows,
+    );
 
-    const emptyFrames = Array.from(
-      { length: frameGroup.animationLength },
-      (_, frame) => frame,
-    ).filter((frame) => {
-      for (let patternZ = 0; patternZ < frameGroup.patternZ; patternZ++) {
-        for (let layer = 0; layer < frameGroup.layers; layer++) {
-          for (let tileY = 0; tileY < frameGroup.height; tileY++) {
-            for (let tileX = 0; tileX < frameGroup.width; tileX++) {
-              const index = getSpriteIndex(
-                frameGroup,
-                frame,
-                targetPatternX,
-                targetPatternY,
-                patternZ,
-                layer,
-                tileX,
-                tileY,
-              );
-              if (frameGroup.sprites[index] > 0) return false;
-            }
-          }
-        }
-      }
-      return true;
-    });
+    const inferredWidth = hasUniformDimensions ? firstGroup.cols : frameGroup.width;
+    const inferredHeight = hasUniformDimensions ? firstGroup.rows : frameGroup.height;
+    if (inferredWidth !== frameGroup.width || inferredHeight !== frameGroup.height) {
+      resizeFrameGroup(
+        frameGroup,
+        inferredWidth,
+        inferredHeight,
+        frameGroup.animationLength,
+      );
+    }
+
+    let emptyFrames = getEmptyFrames(frameGroup, targetPatternX, targetPatternY);
+    const missingFrameCount = Math.max(0, unplaced.length - emptyFrames.length);
+    if (missingFrameCount > 0 && frameGroup.animationLength < MAX_ANIMATION_FRAMES) {
+      const nextAnimationLength = Math.min(
+        MAX_ANIMATION_FRAMES,
+        frameGroup.animationLength + missingFrameCount,
+      );
+      resizeFrameGroup(frameGroup, frameGroup.width, frameGroup.height, nextAnimationLength);
+      emptyFrames = getEmptyFrames(frameGroup, targetPatternX, targetPatternY);
+    }
 
     for (let i = 0; i < unplaced.length && i < emptyFrames.length; i++) {
       if (placeGroupOnFrame(

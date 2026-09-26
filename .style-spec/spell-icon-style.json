@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "scope": "spell-icons-only",
+  "final": {
+    "format": "PNG",
+    "mode": "RGB",
+    "width": 32,
+    "height": 32,
+    "alpha": false,
+    "downsample": "Lanczos",
+    "previewScale": 10,
+    "previewResample": "nearest"
+  },
+  "composition": {
+    "subjectOccupancyPercent": [60, 70],
+    "minimumFinalPaddingPixels": 3,
+    "maximumPrimarySubjects": 1,
+    "maximumSupportingEffects": 1,
+    "maximumTinyHighlights": 2
+  },
+  "validation": {
+    "maximumCornerLuminance": 24,
+    "maximumPercentPixelsAboveLuminance235": 4,
+    "minimumDarkOuterBorderPercent": 70
+  },
+  "styleAnchors": {
+    "warriorFamily": "AI Style References/warrior-style-anchor.png",
+    "mageFamily": "AI Style References/mage-style-anchor.png",
+    "archerFamily": "AI Style References/archer-style-anchor.png"
+  },
+  "palettes": {
+    "juggernaut": ["#0B0702", "#2B1204", "#A83D05", "#E56D09", "#F6B94D", "#FFF0C2"],
+    "lifebinder": ["#000A0A", "#003B32", "#00A86B", "#20E394", "#8FFFD0", "#E7FFF7", "#18A9D6"]
+  }
+}

@@ -32,8 +32,8 @@ export function ControlsPanel({
       <div className="px-4 py-1.5 space-y-1.5">
         {/* Row 1: Size */}
         <div className="grid grid-cols-3 gap-x-3 gap-y-1 bg-emperia-surface/40 rounded px-2 py-1.5">
-          <ParamField label="Width" value={group.width} onChange={(v) => updateFrameGroupProp('width', v)} min={1} max={4} />
-          <ParamField label="Height" value={group.height} onChange={(v) => updateFrameGroupProp('height', v)} min={1} max={4} />
+          <ParamField label="Width" value={group.width} onChange={(v) => updateFrameGroupProp('width', v)} min={1} max={8} />
+          <ParamField label="Height" value={group.height} onChange={(v) => updateFrameGroupProp('height', v)} min={1} max={8} />
           <ParamField label="Crop Size" value={32} readOnly />
         </div>
         {/* Row 2: Patterns (blue) */}
@@ -143,5 +143,4 @@ function PreviewControls({
     </>
   );
 }
-
 
