@@ -10,6 +10,7 @@ import {
   readItemProperty,
   writeItemProperty,
 } from '../lib/item-properties';
+import { AMMO_TYPES, ORB_DAMAGE_ELEMENTS, WEAPON_TYPES } from '../lib/weapon-type-contract';
 import { HelpTooltip } from './HelpTooltip';
 import type { HelpContent } from './HelpTooltip';
 
@@ -169,14 +170,12 @@ const IDENTITY_FIELDS: FieldDef[] = [
 
 const EQUIPMENT_FIELDS: FieldDef[] = [
   { key: 'weaponType', label: 'Weapon Type', type: 'select', options: [
-    '', 'sword', 'axe', 'club', 'distance', 'orb', 'shield', 'ammunition', 'fist', 'staff',
+    ...WEAPON_TYPES,
   ]},
   { key: 'slotType', label: 'Slot Type', type: 'select', options: ['', ...EQUIPMENT_SLOT_TYPES], help: FIELD_HELP.slotType },
-  { key: 'ammoType', label: 'Ammo Type', type: 'select', options: ['', 'arrow', 'bolt'] },
+  { key: 'ammoType', label: 'Ammo Type', type: 'select', options: [...AMMO_TYPES] },
   { key: 'shootType', label: 'Shoot Type', type: 'number' },
-  { key: 'damageElement', label: 'Damage Element', type: 'select', options: [
-    '', 'fire', 'earth', 'water', 'wind', 'ice', 'death', 'arcane', 'holy',
-  ]},
+  { key: 'damageElement', label: 'Damage Element', type: 'select', options: [...ORB_DAMAGE_ELEMENTS] },
 ];
 
 const AVAILABILITY_FIELDS: FieldDef[] = [
@@ -456,6 +455,20 @@ export function ServerPropertiesEditor({
     const current = itemId != null ? itemDefinitions.get(itemId) : undefined;
     const currentProps = current?.properties ? { ...current.properties } : {};
     writeItemProperty(currentProps, key, value);
+    if (key === 'weaponType') {
+      if (value !== 'orb') writeItemProperty(currentProps, 'damageElement', undefined);
+      if (value !== 'bow' && value !== 'crossbow' && value !== 'short_bow') {
+        writeItemProperty(currentProps, 'ammoType', undefined);
+      }
+    } else if (key === 'ammoType' && value !== undefined && value !== '') {
+      const currentWeaponType = readItemProperty(currentProps, 'weaponType');
+      if (currentWeaponType !== 'bow'
+        && currentWeaponType !== 'crossbow'
+        && currentWeaponType !== 'short_bow') {
+        writeItemProperty(currentProps, 'weaponType', undefined);
+        writeItemProperty(currentProps, 'damageElement', undefined);
+      }
+    }
     if (key === 'type' && typeof value === 'string' && thing) {
       updateThingFlags(
         selectedId,
@@ -690,7 +703,9 @@ export function ServerPropertiesEditor({
             )}
           <FieldSection
             title={sec.title}
-            fields={sec.fields}
+            fields={sec.key === 'equipment'
+              ? sec.fields.filter((field) => field.key !== 'damageElement' || props.weaponType === 'orb')
+              : sec.fields}
             props={mode === 'availability' && sec.key === 'availability' ? displayProps : props}
             setProperty={setProperty}
             expanded={expanded.has(sec.key)}

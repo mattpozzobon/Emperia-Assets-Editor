@@ -22,6 +22,7 @@ import { isItemIdentity } from './item-identity-codec';
 import {
   ITEM_PROPERTY_CODE_BY_KEY,
   readItemProperty,
+  validateCanonicalWeaponProperties,
   writeItemProperty,
 } from './item-properties';
 
@@ -611,6 +612,11 @@ export async function runCompile(
     const definitions: Record<string, unknown> = {};
     for (const itemId of Array.from(itemDefinitions.keys()).sort((a, b) => a - b)) {
       const definition = itemDefinitions.get(itemId)!;
+      try {
+        validateCanonicalWeaponProperties(definition.properties);
+      } catch (error) {
+        throw new Error(`Item ${itemId}: ${error instanceof Error ? error.message : String(error)}`);
+      }
       let properties: import('./types').ItemProperties | null = null;
       if (definition.properties) {
         properties = {};

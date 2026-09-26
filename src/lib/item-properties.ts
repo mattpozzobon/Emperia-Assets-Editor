@@ -1,4 +1,5 @@
 import type { ItemProperties } from './types';
+import { AMMO_TYPES, ORB_DAMAGE_ELEMENTS, WEAPON_TYPES } from './weapon-type-contract';
 
 export const ITEM_PROPERTY_CODE_BY_KEY: Readonly<Record<string, number>> = {
   name: 1,
@@ -114,19 +115,11 @@ export const ITEM_PROPERTY_CODE_BY_KEY: Readonly<Record<string, number>> = {
   mannequinDirection: 294,
 };
 
-const WEAPON_TYPES = [
-  '', 'sword', 'axe', 'club', 'distance', 'orb', 'shield',
-  'ammunition', 'fist', 'melee', 'ranged', 'staff',
-] as const;
 const SLOT_TYPES = [
   '', 'head', 'body', 'legs', 'feet', 'left-hand', 'right-hand',
   'hand', 'two-handed', 'ring', 'necklace', 'backpack', 'belt', 'ammo',
   'quiver', 'torch', 'pet',
 ] as const;
-const DAMAGE_ELEMENTS = [
-  '', 'fire', 'earth', 'water', 'wind', 'ice', 'death', 'arcane', 'holy',
-] as const;
-const AMMO_TYPES = ['', 'arrow', 'bolt'] as const;
 const FLOOR_CHANGES = [
   '', 'north', 'east', 'south', 'west', 'down', 'southalt', 'eastalt',
 ] as const;
@@ -159,7 +152,7 @@ const HARVEST_MODES = ['keep', 'remove', 'transform', 'mark'] as const;
 const ENUMS_BY_KEY: Readonly<Record<string, readonly (string | undefined)[]>> = {
   weaponType: WEAPON_TYPES,
   slotType: SLOT_TYPES,
-  damageElement: DAMAGE_ELEMENTS,
+  damageElement: ORB_DAMAGE_ELEMENTS,
   ammoType: AMMO_TYPES,
   itemType: ITEM_CATEGORIES,
   floorchange: FLOOR_CHANGES,
@@ -242,6 +235,38 @@ export function writeItemProperty(
 
   if (!numericKey) throw new Error(`Unknown canonical item property "${key}"`);
   properties[numericKey] = encodePropertyValue(key, value) as ItemProperties[string];
+}
+
+/** Rejects legacy or contradictory weapon metadata before an asset package is emitted. */
+export function validateCanonicalWeaponProperties(
+  properties: ItemProperties | null | undefined,
+): void {
+  const weaponType = readItemProperty(properties, 'weaponType');
+  const ammoType = readItemProperty(properties, 'ammoType');
+  const damageElement = readItemProperty(properties, 'damageElement');
+  if (weaponType !== undefined && weaponType !== ''
+    && (typeof weaponType !== 'string' || !WEAPON_TYPES.includes(weaponType as never))) {
+    throw new Error(`Unknown canonical weaponType value "${String(weaponType)}"`);
+  }
+  if (ammoType !== undefined && ammoType !== ''
+    && (typeof ammoType !== 'string' || !AMMO_TYPES.includes(ammoType as never))) {
+    throw new Error(`Unknown canonical ammoType value "${String(ammoType)}"`);
+  }
+  const isAmmoWeapon = weaponType === 'bow'
+    || weaponType === 'crossbow'
+    || weaponType === 'short_bow';
+  if (weaponType && ammoType && !isAmmoWeapon) {
+    throw new Error('Only bows and crossbows may define both weaponType and ammoType.');
+  }
+  if (isAmmoWeapon && !ammoType) {
+    throw new Error(`${weaponType} items require ammoType.`);
+  }
+  if (weaponType === 'orb' && !damageElement) {
+    throw new Error('Orb items require damageElement.');
+  }
+  if (weaponType !== 'orb' && damageElement) {
+    throw new Error('damageElement is exclusive to orb items.');
+  }
 }
 
 export function hasEquipmentClassification(
