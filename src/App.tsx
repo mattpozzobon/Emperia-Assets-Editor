@@ -208,6 +208,30 @@ export default function App() {
               </div>
             </div>
           )}
+          {activeLibrary === 'hair' && centerTab !== 'poseLab' && (
+            <div className="flex items-center border-b border-emperia-border shrink-0">
+              {([
+                { key: 'hair', label: 'Information' },
+                { key: 'texture', label: 'Texture' },
+              ] as const).map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setCenterTab(tab.key)}
+                  className={`px-4 py-2 text-xs font-medium transition-colors ${
+                    centerTab === tab.key
+                      ? 'text-emperia-accent border-b-2 border-emperia-accent'
+                      : 'text-emperia-muted hover:text-emperia-text'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+              <div className="flex-1" />
+              <div className="pr-3">
+                <SelectedItemBadge />
+              </div>
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto">
             {centerTab === 'texture' && <SpritePreview />}
             {activeLibrary === 'item' && centerTab === 'properties' && <PropertyInspector />}
@@ -226,7 +250,7 @@ export default function App() {
             )}
             {activeLibrary === 'item' && centerTab === 'localization' && <LocalizationEditor />}
             {activeLibrary === 'equipment' && centerTab === 'equipment' && <EquipmentCatalogEditor />}
-            {centerTab === 'hair' && <HairEditor />}
+            {activeLibrary === 'hair' && centerTab === 'hair' && <HairEditor />}
             {centerTab === 'poseLab' && <PoseLab />}
           </div>
         </div>
