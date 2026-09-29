@@ -3,6 +3,7 @@ import { useOBStore } from '../store';
 import { decodeSprite, clearSpriteCache } from '../lib/sprite-decoder';
 import { applyOutfitMask } from '../lib/outfit-colors';
 import type { OutfitColorIndices } from '../lib/outfit-colors';
+import { resizeFrameGroupLayers } from '../lib/frame-group-layout';
 import type { FrameGroup } from '../lib/types';
 import { getSpriteIndex } from './ui-primitives';
 import { PreviewToolbar } from './PreviewToolbar';
@@ -669,7 +670,12 @@ export function SpritePreview() {
   // Update a frame group property and mark dirty
   const updateFrameGroupProp = useCallback((key: string, value: number) => {
     if (!thing || !group) return;
-    (group as unknown as Record<string, unknown>)[key] = value;
+    const layersChanged = key === 'layers' && value !== group.layers;
+    if (layersChanged) {
+      resizeFrameGroupLayers(group, value);
+    } else {
+      (group as unknown as Record<string, unknown>)[key] = value;
+    }
 
     // Resize sprites array to match new total count
     const total = group.width * group.height * group.layers * group.patternX * group.patternY * group.patternZ * group.animationLength;
@@ -692,7 +698,15 @@ export function SpritePreview() {
     const store = useOBStore.getState();
     const newDirtyIds = new Set(store.dirtyIds);
     newDirtyIds.add(thing.id);
-    useOBStore.setState({ dirty: true, dirtyIds: newDirtyIds, editVersion: store.editVersion + 1 });
+    useOBStore.setState({
+      dirty: true,
+      dirtyIds: newDirtyIds,
+      editVersion: store.editVersion + 1,
+      ...(layersChanged ? {
+        activeLayer: Math.min(store.activeLayer, value - 1),
+        selectedSlots: [],
+      } : {}),
+    });
   }, [thing, group]);
 
   const addMovingFrameGroup = () => {
