@@ -77,6 +77,11 @@ identities.forEach((identity, index) => {
   });
 });
 
+const slotTypeCases = new Map<number, string>([
+  [1000, 'cape'],
+  [1001, 'mask'],
+]);
+
 const source: ObjectData = {
   formatVersion: 11,
   version: 1098,
@@ -88,7 +93,7 @@ const source: ObjectData = {
   distanceCount: 0,
   itemAppearances,
   outfitAppearances: new Map(),
-  itemSlotTypes: new Map(),
+  itemSlotTypes: slotTypeCases,
   itemIdentities,
   itemSeatDefinitions: new Map(),
   poseSets: new Map(),
@@ -101,10 +106,15 @@ const source: ObjectData = {
 };
 
 const parsed = parseObjectData(compileObjectData(source));
-if (parsed.formatVersion !== 11) throw new Error(`Expected EOBJ v11, got v${parsed.formatVersion}`);
+if (parsed.formatVersion !== 15) throw new Error(`Expected EOBJ v15, got v${parsed.formatVersion}`);
 for (const [itemId, identity] of itemIdentities) {
   if (parsed.itemIdentities.get(itemId) !== identity) {
     throw new Error(`Identity round-trip failed for item ${itemId}: ${identity}`);
+  }
+}
+for (const [itemId, slotType] of slotTypeCases) {
+  if (parsed.itemSlotTypes.get(itemId) !== slotType) {
+    throw new Error(`Slot type round-trip failed for item ${itemId}: ${slotType}`);
   }
 }
 if (inferNamedItemIdentity('wooden ladder', flags) !== 'stair') {
@@ -186,4 +196,4 @@ if (inferNamedItemIdentity('arena leaderboard', flags) === 'taskboard') {
   throw new Error('Unrelated leaderboards must not infer the taskboard identity');
 }
 
-console.log(`Validated EOBJ v11 round-trip for ${identities.length} item identities.`);
+console.log(`Validated EOBJ v15 round-trip for ${identities.length} item identities.`);

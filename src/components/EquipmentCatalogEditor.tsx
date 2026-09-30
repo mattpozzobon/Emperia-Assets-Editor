@@ -32,6 +32,8 @@ const SLOT_FILTERS: { value: EquipSlotFilter; label: string }[] = [
   { value: 'left-hand', label: 'Left Hand' },
   { value: 'right-hand', label: 'Right Hand' },
   { value: 'backpack', label: 'Backpack' },
+  { value: 'cape', label: 'Cape' },
+  { value: 'mask', label: 'Mask' },
   { value: 'belt', label: 'Belt' },
 ];
 
@@ -43,6 +45,8 @@ function inferSlot(entry: EquipmentCatalogEntry, slotType?: string): EquipSlotFi
   if (slotType === 'legs') return 'legs';
   if (slotType === 'feet') return 'feet';
   if (slotType === 'backpack') return 'backpack';
+  if (slotType === 'cape') return 'cape';
+  if (slotType === 'mask') return 'mask';
 
   // Fall back to name-based inference
   const n = entry.name.toLowerCase();

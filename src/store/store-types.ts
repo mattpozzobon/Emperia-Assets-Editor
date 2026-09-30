@@ -1,7 +1,7 @@
 /**
  * Shared types for the OB Zustand store.
  */
-import type { ObjectData, SpriteData, ThingType, ThingCategory, LibraryCategory, ThingFlags, FrameGroup, ItemDefinition, EquipmentCatalogEntry, HairDefinition, ItemSeatDefinition, SeatPoseProfile, PoseAction, ItemLocale, ItemLocalizedText, ItemCatalogFile } from '../lib/types';
+import type { ObjectData, SpriteData, ThingType, ThingCategory, LibraryCategory, ThingFlags, FrameGroup, ItemDefinition, EquipmentCatalogEntry, HairDefinition, ItemSeatDefinition, SeatPoseProfile, PoseAction, ItemLocale, ItemLocalizedText, ItemCatalogFile, MaterialMaskKind } from '../lib/types';
 import type { OutfitColorIndices } from '../lib/outfit-colors';
 
 export interface UndoEntry {
@@ -101,6 +101,7 @@ export interface OBState {
   copiedThing: {
     flags?: ThingFlags;
     frameGroups?: FrameGroup[];
+    materialMaskLayer?: number | null;
     itemDefinition?: ItemDefinition | null;
     /** Label describing what was copied, for UI display */
     label?: string;
@@ -118,6 +119,12 @@ export interface OBState {
   playing: boolean;
   outfitColors: OutfitColorIndices;
   showColorPicker: keyof OutfitColorIndices | null;
+  /** Direct canvas editing mode for an item's material mask layer. */
+  materialMaskPaintMode: 'paint' | 'erase' | null;
+  /** Square brush diameter in source pixels. */
+  materialMaskBrushSize: number;
+  /** Material family currently selected for authoring. */
+  activeMaterialMaskKind: MaterialMaskKind;
 
   // Actions
   loadFiles: (objBuffer: ArrayBuffer, sprBuffer: ArrayBuffer) => Promise<void>;

@@ -1,10 +1,13 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useOBStore } from '../store';
 import type { ItemProperties, ExclusiveSlotDef, ItemDefinition, ObjectData } from '../lib/types';
 import { ITEM_SLOT_TYPES } from '../lib/item-slot-types';
 import { inferVisualFlagsFromIdentity, ITEM_IDENTITY_GROUPS } from '../lib/item-identity';
 import {
+  EXCLUSIVE_SLOT_TYPES,
   hasEquipmentClassification,
+  isLimitedUseItemCategory,
+  ITEM_CATEGORY_OPTIONS,
   ITEM_FIELD_TYPES,
   normalizeItemPropertiesForEditor,
   readItemProperty,
@@ -19,10 +22,13 @@ import type { HelpContent } from './HelpTooltip';
 interface FieldDef {
   key: string;
   label: string;
-  type: 'string' | 'number' | 'select' | 'boolean' | 'identity-buttons';
+  type: 'string' | 'number' | 'select' | 'slot-select' | 'boolean' | 'identity-buttons';
   options?: string[];
   placeholder?: string;
   help?: string;
+  min?: number;
+  max?: number;
+  step?: number;
 }
 
 const FIELD_HELP: Record<string, string> = {
@@ -33,7 +39,7 @@ const FIELD_HELP: Record<string, string> = {
   weaponType: 'Classifies the item for combat formulas and equipment rules.',
   slotType: 'Equipment slot or item category used by equipment panels, restrictions, and outfit catalog links.',
   ammoType: 'Ammunition category used by ranged weapons.',
-  itemType: 'Canonical non-equipment item category used by tools, consumables, runes, keys, and container restrictions.',
+  itemType: 'Canonical non-equipment category. Creature products use larger stacks of up to 1,000 items.',
   shootType: 'Projectile visual/type identifier used by ranged attacks.',
   damageElement: 'Element associated with this item or weapon damage.',
   physicalAttack: 'Base physical attack value used by combat calculations.',
@@ -65,7 +71,6 @@ const FIELD_HELP: Record<string, string> = {
   manaGain: 'Mana regenerated per tick while this item effect is active.',
   manaTicks: 'Interval for mana regeneration.',
   maxUses: 'Maximum number of tool uses before depletion or breakage.',
-  uses: 'Current/default uses value for tool items.',
 };
 
 const FIELD_EXAMPLES: Record<string, string> = {
@@ -102,7 +107,6 @@ const FIELD_EXAMPLES: Record<string, string> = {
   manaGain: 'A regeneration item can restore the configured mana amount on every mana tick.',
   manaTicks: 'Set the interval that separates each mana regeneration application.',
   maxUses: 'A pickaxe with Max Uses 100 can track a lifetime limit of one hundred uses.',
-  uses: 'A partially used pickaxe can start or persist with its current use counter.',
 };
 
 function getFieldHelp(field: FieldDef): HelpContent {
@@ -140,13 +144,64 @@ function getFieldHelp(field: FieldDef): HelpContent {
   };
 }
 
-const EQUIPMENT_SLOT_TYPES = ITEM_SLOT_TYPES.filter((slot) => (
-  [
-    'head', 'body', 'legs', 'feet', 'left-hand', 'right-hand', 'hand',
-    'two-handed', 'ring', 'necklace', 'backpack', 'belt', 'ammo',
-    'quiver', 'torch', 'pet',
-  ] as readonly string[]
-).includes(slot));
+interface EquipmentSlotOption {
+  value: string;
+  label: string;
+  description: string;
+}
+
+const EQUIPMENT_SLOT_GROUPS: readonly { label: string; options: readonly EquipmentSlotOption[] }[] = [
+  {
+    label: 'Head',
+    options: [
+      { value: 'head', label: 'Head', description: 'Helmet slot · hides hair' },
+      { value: 'mask', label: 'Mask', description: 'Helmet slot · keeps hair visible' },
+    ],
+  },
+  {
+    label: 'Armor',
+    options: [
+      { value: 'body', label: 'Body', description: 'Body armor slot' },
+      { value: 'legs', label: 'Legs', description: 'Leg armor slot' },
+      { value: 'feet', label: 'Feet', description: 'Boots slot' },
+    ],
+  },
+  {
+    label: 'Hands',
+    options: [
+      { value: 'left-hand', label: 'Left hand', description: 'Main-hand only' },
+      { value: 'right-hand', label: 'Right hand', description: 'Off-hand only' },
+      { value: 'hand', label: 'Either hand', description: 'First available hand' },
+      { value: 'two-handed', label: 'Two-handed', description: 'Occupies both hands' },
+    ],
+  },
+  {
+    label: 'Accessories',
+    options: [
+      { value: 'ring', label: 'Ring', description: 'First available ring slot' },
+      { value: 'necklace', label: 'Necklace', description: 'Necklace slot' },
+    ],
+  },
+  {
+    label: 'Back & storage',
+    options: [
+      { value: 'backpack', label: 'Backpack', description: 'Back slot · container' },
+      { value: 'cape', label: 'Cape', description: 'Back slot · no container required' },
+      { value: 'belt', label: 'Belt', description: 'Belt slot' },
+      { value: 'quiver', label: 'Quiver', description: 'Quiver slot' },
+      { value: 'ammo', label: 'Ammo', description: 'Ammunition slot' },
+    ],
+  },
+  {
+    label: 'Utility',
+    options: [
+      { value: 'torch', label: 'Torch', description: 'Light-source slot' },
+      { value: 'pet', label: 'Pet', description: 'Pet slot' },
+    ],
+  },
+];
+
+const EQUIPMENT_SLOT_OPTIONS = EQUIPMENT_SLOT_GROUPS.flatMap((group) => group.options);
 
 const FLUID_SOURCE_OPTIONS = [
   '',
@@ -172,7 +227,7 @@ const EQUIPMENT_FIELDS: FieldDef[] = [
   { key: 'weaponType', label: 'Weapon Type', type: 'select', options: [
     ...WEAPON_TYPES,
   ]},
-  { key: 'slotType', label: 'Slot Type', type: 'select', options: ['', ...EQUIPMENT_SLOT_TYPES], help: FIELD_HELP.slotType },
+  { key: 'slotType', label: 'Slot Type', type: 'slot-select', help: FIELD_HELP.slotType },
   { key: 'ammoType', label: 'Ammo Type', type: 'select', options: [...AMMO_TYPES] },
   { key: 'shootType', label: 'Shoot Type', type: 'number' },
   { key: 'damageElement', label: 'Damage Element', type: 'select', options: [...ORB_DAMAGE_ELEMENTS] },
@@ -221,10 +276,7 @@ const DECAY_FIELDS: FieldDef[] = [
 ];
 
 const SPECIAL_FIELDS: FieldDef[] = [
-  { key: 'itemType', label: 'Item Category', type: 'select', options: [
-    '', 'rope', 'shovel', 'pick', 'knife', 'fishingRod', 'potion', 'machete',
-    'food', 'rune', 'key', 'shield',
-  ]},
+  { key: 'itemType', label: 'Item Category', type: 'select', options: [...ITEM_CATEGORY_OPTIONS] },
   { key: 'fluidSource', label: 'Fluid Source', type: 'select', options: [...FLUID_SOURCE_OPTIONS], help: FIELD_HELP.fluidSource },
   { key: 'field', label: 'Field', type: 'select', options: [...ITEM_FIELD_TYPES] },
 ];
@@ -287,8 +339,7 @@ const COMBAT_BONUS_FIELDS: FieldDef[] = [
 ];
 
 const TOOL_USES_FIELDS: FieldDef[] = [
-  { key: 'maxUses', label: 'Max Uses', type: 'number' },
-  { key: 'uses', label: 'Uses', type: 'number' },
+  { key: 'maxUses', label: 'Max Uses', type: 'number', min: 1, max: 0xffff, step: 1 },
 ];
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -320,6 +371,7 @@ const DETAILS_TAB_LABELS: Record<string, string> = {
   regen: 'Regeneration',
   toolUses: 'Tool Uses',
   availability: 'Market',
+  decay: 'Decay / Transform',
 };
 
 const SECTIONS: SectionDef[] = [
@@ -332,7 +384,7 @@ const SECTIONS: SectionDef[] = [
   { key: 'statBonus', title: 'Stat Bonuses', fields: STAT_BONUS_FIELDS, group: 'equipment', equippableOnly: true },
   { key: 'combatBonus', title: 'Combat Bonuses', fields: COMBAT_BONUS_FIELDS, group: 'equipment', equippableOnly: true },
   { key: 'regen', title: 'Regeneration', fields: REGEN_FIELDS, group: 'equipment', equippableOnly: true },
-  { key: 'toolUses', title: 'Tool Uses', fields: TOOL_USES_FIELDS, group: 'equipment', equippableOnly: true },
+  { key: 'toolUses', title: 'Tool Uses', fields: TOOL_USES_FIELDS, group: 'general' },
   { key: 'availability', title: 'Market / Auto Loot', fields: AVAILABILITY_FIELDS, group: 'general' },
   { key: 'weight', title: 'Weight / Speed', fields: WEIGHT_FIELDS, group: 'general' },
   { key: 'container', title: 'Container', fields: CONTAINER_FIELDS, group: 'general' },
@@ -424,6 +476,8 @@ export function ServerPropertiesEditor({
     () => hasEquipmentClassification(def?.properties),
     [def],
   );
+  const isContainer = thing?.flags.container === true;
+  const hasLimitedUses = isLimitedUseItemCategory(props.itemType);
   const [detailsTab, setDetailsTab] = useState<string>(
     isEquippable ? 'equipment' : 'general',
   );
@@ -454,7 +508,20 @@ export function ServerPropertiesEditor({
     if (selectedId == null) return;
     const current = itemId != null ? itemDefinitions.get(itemId) : undefined;
     const currentProps = current?.properties ? { ...current.properties } : {};
-    writeItemProperty(currentProps, key, value);
+    const canonicalValue = key === 'maxUses'
+      && typeof value === 'number'
+      && value <= 0
+      ? undefined
+      : value;
+    writeItemProperty(currentProps, key, canonicalValue);
+    if (key === 'maxUses') {
+      // Uses (201) belongs to each runtime instance and must never be asset-authored.
+      writeItemProperty(currentProps, 'uses', undefined);
+    }
+    if (key === 'itemType' && !isLimitedUseItemCategory(canonicalValue)) {
+      writeItemProperty(currentProps, 'maxUses', undefined);
+      writeItemProperty(currentProps, 'uses', undefined);
+    }
     if (key === 'weaponType') {
       if (value !== 'orb') writeItemProperty(currentProps, 'damageElement', undefined);
       if (value !== 'bow' && value !== 'crossbow' && value !== 'short_bow') {
@@ -520,22 +587,26 @@ export function ServerPropertiesEditor({
               activeDetailsTab === 'general'
               && section.group === 'general'
               && section.key !== 'availability'
+              && section.key !== 'decay'
             )
             || section.key === activeDetailsTab
           )
         )
       )
       && (!section.equippableOnly || isEquippable)
+      && (section.key !== 'container' || isContainer)
+      && (section.key !== 'toolUses' || hasLimitedUses)
     )).sort((left, right) => mode === 'availability'
       ? Number(right.key === 'availability') - Number(left.key === 'availability')
       : 0),
-    [activeDetailsTab, isEquippable, mode],
+    [activeDetailsTab, hasLimitedUses, isContainer, isEquippable, mode],
   );
 
   const mainDetailsTabs = useMemo(
     () => [
       { key: 'general', title: 'General item properties' },
       { key: 'equipment', title: 'Equipment properties' },
+      { key: 'decay', title: 'Decay and transformation properties' },
       { key: 'availability', title: 'Market and auto-loot availability' },
     ],
     [],
@@ -715,7 +786,7 @@ export function ServerPropertiesEditor({
             <p className="px-2 pt-1 text-[9px] leading-relaxed text-emperia-muted/70">
               Set Weapon Type or Slot Type to enable combat stats, requirements,
               skill bonuses, absorption, stat bonuses, combat bonuses,
-              regeneration, and tool uses.
+              and regeneration.
             </p>
           )}
           {sec.key === 'container' && expanded.has('container') && (
@@ -782,12 +853,13 @@ function ExclusiveSlotsEditor({
   onChange: (slots: ExclusiveSlotDef[] | undefined) => void;
 }) {
   const addSlot = () => {
-    const nextIndex = slots.length > 0 ? Math.max(...slots.map((s) => s.slotIndex)) + 1 : 0;
-    onChange([...slots, { slotIndex: nextIndex, allowedItemTypes: [] }]);
+    onChange([...slots, { slotIndex: slots.length, allowedItemTypes: [] }]);
   };
 
   const removeSlot = (i: number) => {
-    const next = slots.filter((_, idx) => idx !== i);
+    const next = slots
+      .filter((_, idx) => idx !== i)
+      .map((slot, slotIndex) => ({ ...slot, slotIndex }));
     onChange(next.length > 0 ? next : undefined);
   };
 
@@ -822,22 +894,10 @@ function ExclusiveSlotsEditor({
                   ×
                 </button>
               </div>
-              <div className="flex items-center gap-1">
-                <span className="text-[9px] text-emperia-muted shrink-0 w-12">Index</span>
-                <input
-                  type="number"
-                  value={slot.slotIndex}
-                  onChange={(e) => {
-                    const n = parseInt(e.target.value, 10);
-                    if (!isNaN(n) && n >= 0) updateSlot(i, { slotIndex: n });
-                  }}
-                  className="w-12 bg-emperia-bg border border-emperia-border rounded px-1.5 py-0.5 text-emperia-text text-[10px]"
-                />
-              </div>
               <div className="flex items-start gap-1">
                 <span className="text-[9px] text-emperia-muted shrink-0 w-12 pt-0.5">Types</span>
                 <div className="flex-1 flex flex-wrap gap-1">
-                  {ITEM_SLOT_TYPES.map((st) => {
+                  {EXCLUSIVE_SLOT_TYPES.map((st) => {
                     const active = (slot.allowedItemTypes ?? []).includes(st);
                     return (
                       <button
@@ -892,7 +952,7 @@ function FieldRow({
   value: string | number | boolean | undefined;
   onChange: (value: string | number | boolean | undefined) => void;
 }) {
-  const { label, type, options, placeholder } = field;
+  const { label, type, options, placeholder, min, max, step } = field;
   const help = getFieldHelp(field);
   const labelNode = (
     <span className="w-28 text-emperia-muted shrink-0 flex items-center gap-1">
@@ -969,6 +1029,16 @@ function FieldRow({
     );
   }
 
+  if (type === 'slot-select') {
+    return (
+      <SlotTypePicker
+        labelNode={labelNode}
+        value={typeof value === 'string' ? value : ''}
+        onChange={(next) => onChange(next || undefined)}
+      />
+    );
+  }
+
   if (type === 'select') {
     return (
       <div className="flex items-center gap-2">
@@ -992,6 +1062,9 @@ function FieldRow({
         {labelNode}
         <input
           type="number"
+          min={min}
+          max={max}
+          step={step}
           value={value != null ? String(value) : ''}
           placeholder={placeholder}
           onChange={(e) => {
@@ -1017,6 +1090,95 @@ function FieldRow({
         onChange={(e) => onChange(e.target.value || undefined)}
         className="flex-1 bg-emperia-bg border border-emperia-border rounded px-2 py-0.5 text-emperia-text text-xs w-0"
       />
+    </div>
+  );
+}
+
+function SlotTypePicker({
+  labelNode,
+  value,
+  onChange,
+}: {
+  labelNode: ReactNode;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = EQUIPMENT_SLOT_OPTIONS.find((option) => option.value === value);
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2">
+        {labelNode}
+        <button
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          onClick={() => setOpen((current) => !current)}
+          className={`flex min-w-0 flex-1 items-center justify-between rounded border px-2 py-1 text-left text-xs transition-colors ${
+            open
+              ? 'border-emperia-accent bg-emperia-accent/10 text-emperia-text'
+              : 'border-emperia-border bg-emperia-bg text-emperia-text hover:border-emperia-text/40 hover:bg-emperia-hover'
+          }`}
+        >
+          <span className="min-w-0">
+            <span className="block truncate font-medium">{selected?.label ?? 'Choose a slot'}</span>
+            {selected && <span className="block truncate text-[9px] text-emperia-muted">{selected.description}</span>}
+          </span>
+          <span className={`ml-2 shrink-0 text-[9px] text-emperia-muted transition-transform ${open ? 'rotate-180' : ''}`}>▼</span>
+        </button>
+      </div>
+      {open && (
+        <div
+          role="listbox"
+          aria-label="Equipment slot type"
+          className="ml-[7.5rem] space-y-2 rounded border border-emperia-border bg-emperia-bg/80 p-2 shadow-lg"
+        >
+          <button
+            type="button"
+            role="option"
+            aria-selected={!value}
+            onClick={() => { onChange(''); setOpen(false); }}
+            className={`w-full rounded border px-2 py-1.5 text-left transition-colors ${
+              !value
+                ? 'border-emperia-accent bg-emperia-accent/15 text-emperia-accent'
+                : 'border-emperia-border text-emperia-muted hover:bg-emperia-hover hover:text-emperia-text'
+            }`}
+          >
+            <span className="block text-[10px] font-medium">None</span>
+            <span className="block text-[9px] text-emperia-muted">Not wearable equipment</span>
+          </button>
+          {EQUIPMENT_SLOT_GROUPS.map((group) => (
+            <div key={group.label} className="space-y-1">
+              <div className="text-[8px] font-semibold uppercase tracking-[0.14em] text-emperia-muted/70">
+                {group.label}
+              </div>
+              <div className="grid grid-cols-2 gap-1">
+                {group.options.map((option) => {
+                  const active = option.value === value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      onClick={() => { onChange(option.value); setOpen(false); }}
+                      className={`min-w-0 rounded border px-2 py-1.5 text-left transition-colors ${
+                        active
+                          ? 'border-emperia-accent bg-emperia-accent/15 text-emperia-accent'
+                          : 'border-emperia-border bg-emperia-panel text-emperia-text hover:border-emperia-text/30 hover:bg-emperia-hover'
+                      }`}
+                    >
+                      <span className="block truncate text-[10px] font-medium">{option.label}</span>
+                      <span className="block truncate text-[8px] text-emperia-muted">{option.description}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

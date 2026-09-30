@@ -8,7 +8,7 @@ import type { ObjectData, ThingFlags, FrameGroup, EquipmentAppearance, HairDefin
 import { encodeItemSlotType } from './item-slot-types';
 import { encodeItemIdentity } from './item-identity-codec';
 
-const EOBJ_FORMAT_VERSION = 11;
+const EOBJ_FORMAT_VERSION = 15;
 
 const ATTR = {
   ThingAttrGround: 0,
@@ -230,6 +230,26 @@ export function compileObjectData(
     }
     w.writeUInt16(itemId);
     w.writeUInt8(encodeItemIdentity(identity));
+  }
+
+  const materialMasks = Array.from(data.things.values())
+    .filter((thing) => thing.materialMaskLayer != null)
+    .sort((a, b) => a.id - b.id);
+  if (materialMasks.length > 0xFFFF) throw new Error('Material mask catalog exceeds the UInt16 entry limit');
+  w.writeUInt16(materialMasks.length);
+  for (const thing of materialMasks) {
+    const appearanceId = thing.id;
+    const layer = thing.materialMaskLayer!;
+    if (!Number.isInteger(appearanceId) || appearanceId < 100 || appearanceId > 0xFFFF) {
+      throw new Error(`Material mask appearance ${appearanceId} is outside the UInt16 range`);
+    }
+    if (layer !== 1) {
+      throw new Error(`Material mask appearance ${appearanceId} must use the shared layer 2`);
+    }
+    if (thing.frameGroups.some((group) => layer >= group.layers)) {
+      throw new Error(`Material mask appearance ${appearanceId} references missing layer ${layer + 1}`);
+    }
+    w.writeUInt16(appearanceId);
   }
 
   const equipment = Array.from(equipmentAppearances.entries()).sort(([a], [b]) => a - b);

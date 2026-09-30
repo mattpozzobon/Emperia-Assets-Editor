@@ -121,6 +121,9 @@ export const useOBStore = create<OBState>((set, get) => ({
   playing: false,
   outfitColors: { head: 0, body: 0, legs: 0, feet: 0 },
   showColorPicker: null,
+  materialMaskPaintMode: null,
+  materialMaskBrushSize: 1,
+  activeMaterialMaskKind: 2,
 
   // ─── File loading ───────────────────────────────────────────────────────────
 
@@ -368,6 +371,9 @@ export const useOBStore = create<OBState>((set, get) => ({
       editVersion: 0,
       focusSpriteId: null,
       copiedThing: null,
+      materialMaskPaintMode: null,
+      materialMaskBrushSize: 1,
+      activeMaterialMaskKind: 2,
       activeGroup: 0,
       activeDirection: 2,
       activePatternY: 0,
@@ -999,6 +1005,7 @@ export const useOBStore = create<OBState>((set, get) => ({
 
     thing.flags = emptyFlags;
     thing.frameGroups = [emptyFrameGroup];
+    delete thing.materialMaskLayer;
     thing.rawBytes = undefined;
 
     const newDirtyIds = new Set(get().dirtyIds);

@@ -4,6 +4,8 @@ import { decodeSprite, clearSpriteCache } from '../lib/sprite-decoder';
 import { applyOutfitMask } from '../lib/outfit-colors';
 import type { OutfitColorIndices } from '../lib/outfit-colors';
 import { resizeFrameGroupLayers } from '../lib/frame-group-layout';
+import { applyMaterialMaskDebugOverlay, MATERIAL_MASK_COLORS, paintMaterialMaskStroke } from '../lib/material-mask';
+import { MATERIAL_MASK_KINDS } from '../lib/types';
 import type { FrameGroup } from '../lib/types';
 import { getSpriteIndex } from './ui-primitives';
 import { PreviewToolbar } from './PreviewToolbar';
@@ -53,6 +55,9 @@ export function SpritePreview() {
   const setBlendLayers = (b: boolean) => useOBStore.setState({ blendLayers: b });
   const outfitColors = useOBStore((s) => s.outfitColors);
   const setOutfitColors = (c: OutfitColorIndices) => useOBStore.setState({ outfitColors: c });
+  const materialMaskPaintMode = useOBStore((s) => s.materialMaskPaintMode);
+  const materialMaskBrushSize = useOBStore((s) => s.materialMaskBrushSize);
+  const activeMaterialMaskKind = useOBStore((s) => s.activeMaterialMaskKind);
   const [previewMode, setPreviewMode] = useState(false); // true = single direction/pattern preview
   const activeDirection = useOBStore((s) => s.activeDirection);
   const setActiveDirection = (direction: number) => useOBStore.setState({ activeDirection: direction });
@@ -69,6 +74,11 @@ export function SpritePreview() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameTimerRef = useRef<number>(0);
   const latestRenderKeyRef = useRef('');
+  const maskPaintingRef = useRef(false);
+  const maskStrokeModeRef = useRef<'paint' | 'erase' | null>(null);
+  const maskStrokeButtonRef = useRef(0);
+  const lastMaskPaintPointRef = useRef<{ slotIdx: number; x: number; y: number } | null>(null);
+  const suppressCanvasClickRef = useRef(false);
 
   const category = useOBStore((s) => s.activeCategory);
   const isDirectionalAppearance = (
@@ -78,6 +88,7 @@ export function SpritePreview() {
   );
   const isEffect = category === 'effect';
   const isDistance = category === 'distance';
+  const supportsMaterialMask = category === 'item' || category === 'outfit' || category === 'equipment';
   const effectReferenceOutfitId = isEffect && showEffectOutfitReference && objectData
     ? objectData.itemCount + 135
     : null;
@@ -93,11 +104,22 @@ export function SpritePreview() {
       activeLayer: 0,
       blendLayers: false,
       showColorPicker: null,
+      materialMaskPaintMode: null,
+      activeMaterialMaskKind: MATERIAL_MASK_KINDS.leather,
     });
     setActiveZ(0);
     // Character appearances use the same cardinal-direction preview.
     setPreviewMode(isDirectionalAppearance || isEffect || isDistance);
   }, [selectedId, isDirectionalAppearance, isEffect, isDistance]);
+
+  useEffect(() => {
+    if (
+      materialMaskPaintMode
+      && (!supportsMaterialMask || thing?.materialMaskLayer !== activeLayer || blendLayers)
+    ) {
+      useOBStore.setState({ materialMaskPaintMode: null });
+    }
+  }, [activeLayer, blendLayers, materialMaskPaintMode, supportsMaterialMask, thing?.materialMaskLayer]);
 
   // Close copy menu on outside click
   useEffect(() => {
@@ -277,7 +299,20 @@ export function SpritePreview() {
         }
 
         const useOutfitMask = isDirectionalAppearance && blendLayers && group.layers >= 2;
-        const layersToRender = useOutfitMask
+        const materialMaskLayer = supportsMaterialMask ? thing?.materialMaskLayer : undefined;
+        const useMaterialMask = blendLayers
+          && materialMaskLayer != null
+          && materialMaskLayer > 0
+          && materialMaskLayer < group.layers;
+        const editMaterialMask = Boolean(
+          materialMaskPaintMode
+          && materialMaskLayer != null
+          && activeLayer === materialMaskLayer
+          && !blendLayers,
+        );
+        const layersToRender = editMaterialMask
+          ? [0, materialMaskLayer!]
+          : useOutfitMask || useMaterialMask
           ? [0]
           : blendLayers
             ? Array.from({ length: group.layers }, (_, i) => i)
@@ -309,17 +344,35 @@ export function SpritePreview() {
                 }
               }
 
+              if (useMaterialMask) {
+                const maskIdx = getSpriteIndex(group, frame, px, py, activeZ, materialMaskLayer, tx, ty);
+                if (maskIdx < group.sprites.length) {
+                  const maskSpriteId = group.sprites[maskIdx];
+                  if (maskSpriteId > 0) {
+                    const maskRaw = spriteOverrides.get(maskSpriteId) ?? decodeSprite(spriteData, maskSpriteId);
+                    if (maskRaw) applyMaterialMaskDebugOverlay(imgData, maskRaw);
+                  }
+                }
+              }
+
               const dx = overlayX + (group.width - 1 - tx) * 32;
               const dy = overlayY + (group.height - 1 - ty) * 32;
+              const isMaterialMaskBaseGuide = editMaterialMask && layer === 0;
+              const isMaterialMaskOverlay = editMaterialMask && layer === materialMaskLayer;
 
               // Use drawImage for alpha compositing whenever we have a base outfit,
               // blending multiple layers, or applying outfit masks (putImageData replaces
               // pixels instead of compositing, which breaks multi-tile/multi-frame outfits).
-              if (hasBase || useOutfitMask || (blendLayers && layer > 0)) {
+              if (hasBase || useOutfitMask || useMaterialMask || editMaterialMask || (blendLayers && layer > 0)) {
                 const tmp = document.createElement('canvas');
                 tmp.width = 32; tmp.height = 32;
                 tmp.getContext('2d')!.putImageData(imgData, 0, 0);
+                if (isMaterialMaskBaseGuide || isMaterialMaskOverlay) {
+                  ctx.save();
+                  ctx.globalAlpha = isMaterialMaskBaseGuide ? 0.68 : 0.8;
+                }
                 ctx.drawImage(tmp, dx, dy);
+                if (isMaterialMaskBaseGuide || isMaterialMaskOverlay) ctx.restore();
               } else {
                 ctx.putImageData(imgData, dx, dy);
               }
@@ -341,7 +394,7 @@ export function SpritePreview() {
         }
       }
     }
-  }, [group, spriteData, spriteOverrides, activeGroup, activeLayer, activeZ, blendLayers, previewMode, activeDirection, activePatternY, isDirectionalAppearance, isEffect, outfitColors, previewBaseOutfitId, effectReferenceOutfitId, effectReferenceGroup, showDisplacementGuide, selectedId, objectData, renderThingLayer, thing, editVersion]);
+  }, [group, spriteData, spriteOverrides, activeGroup, activeLayer, activeZ, blendLayers, materialMaskPaintMode, previewMode, activeDirection, activePatternY, isDirectionalAppearance, isEffect, outfitColors, previewBaseOutfitId, effectReferenceOutfitId, effectReferenceGroup, showDisplacementGuide, selectedId, objectData, renderThingLayer, thing, editVersion, supportsMaterialMask]);
 
   useEffect(() => {
     renderFrame(currentFrame);
@@ -402,33 +455,6 @@ export function SpritePreview() {
     : previewCellH + Math.abs(previewDispY);
   const expectedCanvasW = renderedPxCount * expectedCellW;
   const expectedCanvasH = renderedPyCount * expectedCellH;
-
-  // Given a pixel position on the displayed canvas, find the sprite ID at that tile
-  const getSpriteAtPosition = useCallback((clientX: number, clientY: number): number => {
-    if (!group || !canvasRef.current) return 0;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const canvasPixelX = (clientX - rect.left) / zoom;
-    const canvasPixelY = (clientY - rect.top) / zoom;
-
-    const tileCol = Math.floor(canvasPixelX / 32);
-    const tileRow = Math.floor(canvasPixelY / 32);
-
-    const totalCols = renderedPxCount * group.width;
-    const totalRows = renderedPyCount * group.height;
-    if (tileCol < 0 || tileCol >= totalCols || tileRow < 0 || tileRow >= totalRows) return 0;
-
-    // In preview mode the rendered pattern is a single cell
-    const cellCol = Math.floor(tileCol / group.width);
-    const cellRow = Math.floor(tileRow / group.height);
-    const px = previewMode ? (activeDirection < group.patternX ? activeDirection : 0) : cellCol;
-    const py = previewMode ? (activePatternY < group.patternY ? activePatternY : 0) : cellRow;
-
-    const tx = group.width - 1 - (tileCol % group.width);
-    const ty = group.height - 1 - (tileRow % group.height);
-
-    const idx = getSpriteIndex(group, currentFrame, px, py, activeZ, activeLayer, tx, ty);
-    return idx < group.sprites.length ? group.sprites[idx] : 0;
-  }, [group, zoom, currentFrame, activeLayer, activeZ, previewMode, activeDirection, activePatternY, renderedPxCount, renderedPyCount]);
 
   // Given a pixel position on the displayed canvas, find the sprite slot index
   const getSlotIndexAtPosition = useCallback((clientX: number, clientY: number): number => {
@@ -494,15 +520,11 @@ export function SpritePreview() {
 
         let targetIdx = -1;
         if (dropX != null && dropY != null) {
-          const sid = getSpriteAtPosition(dropX, dropY);
-          if (sid > 0) {
-            // Find the index for this sprite ID so we can use assignSprite
-            targetIdx = group.sprites.indexOf(sid);
-          }
+          targetIdx = getSlotIndexAtPosition(dropX, dropY);
         }
         // Fallback: first sprite slot of the current frame
         if (targetIdx < 0) {
-          targetIdx = getSpriteIndex(group, currentFrame, 0, 0, 0, 0, 0, 0);
+          targetIdx = getSpriteIndex(group, currentFrame, 0, 0, 0, activeLayer, 0, 0);
         }
         if (targetIdx >= 0 && targetIdx < group.sprites.length) {
           assignSprite(targetIdx, imgData);
@@ -517,7 +539,7 @@ export function SpritePreview() {
             const py = Math.floor(row / group.height);
             const tx = group.width - 1 - (col % group.width);
             const ty = group.height - 1 - (row % group.height);
-            const idx = getSpriteIndex(group, currentFrame, px, py, 0, 0, tx, ty);
+            const idx = getSpriteIndex(group, currentFrame, px, py, activeZ, activeLayer, tx, ty);
             if (idx >= group.sprites.length) continue;
             tctx.clearRect(0, 0, 32, 32);
             tctx.drawImage(img, col * 32, row * 32, 32, 32, 0, 0, 32, 32);
@@ -528,7 +550,7 @@ export function SpritePreview() {
       }
     };
     img.src = URL.createObjectURL(file);
-  }, [group, thing, spriteData, currentFrame, replaceSprite, addSprite, getSpriteAtPosition]);
+  }, [group, thing, spriteData, currentFrame, activeLayer, activeZ, replaceSprite, addSprite, getSlotIndexAtPosition]);
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -657,6 +679,10 @@ export function SpritePreview() {
   }, [handleImageFiles, thing, group, spriteData, spriteOverrides, spriteGroups, draggingSpriteGroupId, replaceSprite, addSprite, getSlotIndexAtPosition, zoom, renderedPxCount, renderedPyCount, previewMode, activeDirection, activePatternY, activeZ, activeLayer, currentFrame]);
 
   const handleCanvasClick = useCallback((e: React.MouseEvent) => {
+    if (suppressCanvasClickRef.current) {
+      suppressCanvasClickRef.current = false;
+      return;
+    }
     const slotIdx = getSlotIndexAtPosition(e.clientX, e.clientY);
     if (slotIdx >= 0 && group) {
       const spriteId = group.sprites[slotIdx];
@@ -667,12 +693,118 @@ export function SpritePreview() {
     }
   }, [getSlotIndexAtPosition, group, activeGroup]);
 
+  const canPaintMaterialMask = Boolean(
+    supportsMaterialMask
+    && thing?.materialMaskLayer != null
+    && thing.materialMaskLayer === activeLayer
+    && !blendLayers
+    && materialMaskPaintMode,
+  );
+
+  const getMaskPaintPoint = useCallback((clientX: number, clientY: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !group) return null;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    const canvasX = Math.floor((clientX - rect.left) * canvas.width / rect.width);
+    const canvasY = Math.floor((clientY - rect.top) * canvas.height / rect.height);
+    if (canvasX < 0 || canvasY < 0 || canvasX >= canvas.width || canvasY >= canvas.height) return null;
+    const slotIdx = getSlotIndexAtPosition(clientX, clientY);
+    if (slotIdx < 0) return null;
+    return { slotIdx, x: canvasX % 32, y: canvasY % 32 };
+  }, [getSlotIndexAtPosition, group]);
+
+  const paintMaterialMaskAt = useCallback((point: { slotIdx: number; x: number; y: number }) => {
+    if (!group || !spriteData || !thing || !materialMaskPaintMode) return;
+    let spriteId = group.sprites[point.slotIdx] ?? 0;
+    let source: ImageData | null = null;
+    if (spriteId > 0) {
+      source = useOBStore.getState().spriteOverrides.get(spriteId) ?? decodeSprite(spriteData, spriteId);
+    }
+    const imageData = source
+      ? new ImageData(new Uint8ClampedArray(source.data), source.width, source.height)
+      : new ImageData(32, 32);
+    const previous = lastMaskPaintPointRef.current;
+    const start = previous && previous.slotIdx === point.slotIdx ? previous : point;
+    paintMaterialMaskStroke(
+      imageData,
+      start,
+      point,
+      materialMaskBrushSize,
+      (maskStrokeModeRef.current ?? materialMaskPaintMode) === 'erase',
+      MATERIAL_MASK_COLORS[activeMaterialMaskKind],
+    );
+
+    if (spriteId > 0) {
+      replaceSprite(spriteId, imageData);
+    } else {
+      const newId = addSprite(imageData);
+      if (newId == null) return;
+      spriteId = newId;
+      group.sprites[point.slotIdx] = newId;
+    }
+    thing.rawBytes = undefined;
+    const store = useOBStore.getState();
+    const dirtyIds = new Set(store.dirtyIds);
+    dirtyIds.add(thing.id);
+    useOBStore.setState({ dirty: true, dirtyIds });
+    lastMaskPaintPointRef.current = point;
+  }, [activeMaterialMaskKind, addSprite, group, materialMaskBrushSize, materialMaskPaintMode, replaceSprite, spriteData, thing]);
+
+  const handleMaskPointerDown = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!canPaintMaterialMask) return;
+    if (event.button !== 0 && event.button !== 2) return;
+    const point = getMaskPaintPoint(event.clientX, event.clientY);
+    if (!point) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    maskPaintingRef.current = true;
+    maskStrokeModeRef.current = event.button === 2 ? 'erase' : materialMaskPaintMode;
+    maskStrokeButtonRef.current = event.button === 2 ? 2 : 1;
+    suppressCanvasClickRef.current = true;
+    lastMaskPaintPointRef.current = null;
+    paintMaterialMaskAt(point);
+  }, [canPaintMaterialMask, getMaskPaintPoint, materialMaskPaintMode, paintMaterialMaskAt]);
+
+  const handleMaskPointerMove = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!maskPaintingRef.current || !canPaintMaterialMask) return;
+    if ((event.buttons & maskStrokeButtonRef.current) === 0) {
+      maskPaintingRef.current = false;
+      maskStrokeModeRef.current = null;
+      maskStrokeButtonRef.current = 0;
+      lastMaskPaintPointRef.current = null;
+      return;
+    }
+    event.preventDefault();
+    const point = getMaskPaintPoint(event.clientX, event.clientY);
+    if (point) paintMaterialMaskAt(point);
+  }, [canPaintMaterialMask, getMaskPaintPoint, paintMaterialMaskAt]);
+
+  const stopMaskPainting = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!maskPaintingRef.current) return;
+    maskPaintingRef.current = false;
+    maskStrokeModeRef.current = null;
+    maskStrokeButtonRef.current = 0;
+    lastMaskPaintPointRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }, []);
+
+  const handleMaskContextMenu = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
+    if (canPaintMaterialMask) event.preventDefault();
+  }, [canPaintMaterialMask]);
+
   // Update a frame group property and mark dirty
   const updateFrameGroupProp = useCallback((key: string, value: number) => {
     if (!thing || !group) return;
     const layersChanged = key === 'layers' && value !== group.layers;
     if (layersChanged) {
       resizeFrameGroupLayers(group, value);
+      if (thing.materialMaskLayer != null && thing.materialMaskLayer >= value) {
+        delete thing.materialMaskLayer;
+        useOBStore.setState({ materialMaskPaintMode: null });
+      }
     } else {
       (group as unknown as Record<string, unknown>)[key] = value;
     }
@@ -756,17 +888,17 @@ export function SpritePreview() {
         <input
           type="range"
           min={1}
-          max={8}
+          max={16}
           value={zoom}
           onChange={(e) => setZoom(Number(e.target.value))}
           className="flex-1 h-1 accent-emperia-accent"
         />
-        <span className="text-[10px] text-emperia-muted w-6 text-right">{zoom}x</span>
+        <span className="text-[10px] text-emperia-muted w-8 text-right">{zoom}x</span>
       </div>
 
       {/* Sprite preview area */}
       <div
-        className="flex-1 flex items-center justify-center overflow-auto min-h-0"
+        className="flex-1 flex items-start justify-start overflow-auto min-h-0"
         onWheel={(e) => {
           if (!isAnimated || !group) return;
           e.preventDefault();
@@ -777,6 +909,7 @@ export function SpritePreview() {
           });
         }}
       >
+        <div className="m-auto shrink-0">
         {(() => {
           // Determine if we should show spatial direction buttons
           // Outfits: patternX=4, patternY=1 → 4 cardinal dirs (N/E/S/W)
@@ -862,12 +995,19 @@ export function SpritePreview() {
             >
               <canvas
                 ref={canvasRef}
-                className="cursor-pointer"
+                className={canPaintMaterialMask ? 'cursor-crosshair select-none' : 'cursor-pointer'}
                 onClick={handleCanvasClick}
+                onPointerDown={handleMaskPointerDown}
+                onPointerMove={handleMaskPointerMove}
+                onPointerUp={stopMaskPainting}
+                onPointerCancel={stopMaskPainting}
+                onLostPointerCapture={stopMaskPainting}
+                onContextMenu={handleMaskContextMenu}
                 style={{
                   width: expectedCanvasW * zoom,
                   height: expectedCanvasH * zoom,
                   imageRendering: 'pixelated',
+                  touchAction: canPaintMaterialMask ? 'none' : 'auto',
                 }}
               />
               {showGrid && group && (
@@ -1000,12 +1140,19 @@ export function SpritePreview() {
         >
           <canvas
             ref={canvasRef}
-            className="cursor-pointer"
+            className={canPaintMaterialMask ? 'cursor-crosshair select-none' : 'cursor-pointer'}
             onClick={handleCanvasClick}
+            onPointerDown={handleMaskPointerDown}
+            onPointerMove={handleMaskPointerMove}
+            onPointerUp={stopMaskPainting}
+            onPointerCancel={stopMaskPainting}
+            onLostPointerCapture={stopMaskPainting}
+            onContextMenu={handleMaskContextMenu}
             style={{
               width: expectedCanvasW * zoom,
               height: expectedCanvasH * zoom,
               imageRendering: 'pixelated',
+              touchAction: canPaintMaterialMask ? 'none' : 'auto',
             }}
           />
           {showGrid && group && (
@@ -1063,6 +1210,7 @@ export function SpritePreview() {
         {layerScrubber}
         </div>
         )})()}
+        </div>
       </div>
 
       {/* Toolbar */}

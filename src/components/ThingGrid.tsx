@@ -1,5 +1,5 @@
 import { useCallback, useRef, useEffect, useState, useMemo } from 'react';
-import { Link2 } from 'lucide-react';
+import { Link2, Swords } from 'lucide-react';
 import { useOBStore, getThingsForCategory, getDisplayId } from '../store';
 import { compositeThingDataUrl } from '../lib/sprite-decoder';
 import { poseSetProfileKey, type SeatDirection } from '../lib/types';
@@ -301,6 +301,15 @@ export function ThingGrid() {
               ? itemLocalizations.en.get(itemId)?.name ?? def?.properties?.name
               : def?.properties?.name;
             const publicId = activeCategory === 'item' ? (itemId ?? displayId) : displayId;
+            const linkedEquipment = thing.category === 'item'
+              ? objectData?.equipmentAppearances.get(publicId)
+              : undefined;
+            const linkedEquipmentAppearanceId = linkedEquipment?.default
+              ?? linkedEquipment?.left
+              ?? linkedEquipment?.right;
+            const linkedEquipmentInternalId = linkedEquipmentAppearanceId == null || !objectData
+              ? null
+              : objectData.itemCount + objectData.outfitCount + 1 + linkedEquipmentAppearanceId;
             const seatBinding = activeCategory === 'item'
               ? objectData?.itemSeatDefinitions.get(publicId) ?? null
               : null;
@@ -330,32 +339,40 @@ export function ThingGrid() {
                 : baseTipText;
 
             const isMultiSelected = selectedIds.has(thing.id);
+            const selectThing = (ctrlKey = false, metaKey = false, shiftKey = false) => {
+              if (ctrlKey || metaKey) {
+                toggleSelection(thing.id);
+              } else if (shiftKey && selectedId != null) {
+                const startIdx = things.findIndex((candidate) => candidate.id === selectedId);
+                const endIdx = things.findIndex((candidate) => candidate.id === thing.id);
+                if (startIdx >= 0 && endIdx >= 0) {
+                  const lo = Math.min(startIdx, endIdx);
+                  const hi = Math.max(startIdx, endIdx);
+                  const rangeIds = things.slice(lo, hi + 1).map((candidate) => candidate.id);
+                  toggleSelection(thing.id, rangeIds);
+                }
+              } else {
+                setSelectedId(thing.id);
+                if (activeLibrary === 'hair' && objectData) {
+                  const hair = hairDefinitions.find((entry) => entry.appearanceId === getDisplayId(objectData, thing.id));
+                  if (hair) setSelectedHairId(hair.hairId);
+                }
+              }
+            };
             return (
-              <button
+              <div
                 key={thing.id}
-                onClick={(e) => {
-                  if (e.ctrlKey || e.metaKey) {
-                    toggleSelection(thing.id);
-                  } else if (e.shiftKey && selectedId != null) {
-                    const startIdx = things.findIndex((t) => t.id === selectedId);
-                    const endIdx = things.findIndex((t) => t.id === thing.id);
-                    if (startIdx >= 0 && endIdx >= 0) {
-                      const lo = Math.min(startIdx, endIdx);
-                      const hi = Math.max(startIdx, endIdx);
-                      const rangeIds = things.slice(lo, hi + 1).map((t) => t.id);
-                      toggleSelection(thing.id, rangeIds);
-                    }
-                  } else {
-                    setSelectedId(thing.id);
-                    if (activeLibrary === 'hair' && objectData) {
-                      const hair = hairDefinitions.find((entry) => entry.appearanceId === getDisplayId(objectData, thing.id));
-                      if (hair) setSelectedHairId(hair.hairId);
-                    }
-                  }
+                role="button"
+                tabIndex={0}
+                onClick={(event) => selectThing(event.ctrlKey, event.metaKey, event.shiftKey)}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' && event.key !== ' ') return;
+                  event.preventDefault();
+                  selectThing(event.ctrlKey, event.metaKey, event.shiftKey);
                 }}
                 className={`
                   relative flex items-center justify-center
-                  border transition-colors
+                  cursor-pointer border transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-emperia-accent
                   ${isSelected
                     ? 'bg-emperia-accent/20 border-emperia-accent'
                     : isMultiSelected
@@ -417,6 +434,35 @@ export function ThingGrid() {
                     <Link2 className="h-2.5 w-2.5" strokeWidth={3} />
                   </span>
                 )}
+                {linkedEquipmentInternalId != null && objectData?.things.has(linkedEquipmentInternalId) && (
+                  <button
+                    type="button"
+                    title={`Go to linked equipment #${linkedEquipmentAppearanceId}`}
+                    aria-label={`Go to linked equipment #${linkedEquipmentAppearanceId}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      tooltip.hide();
+                      useOBStore.setState({
+                        activeCategory: 'equipment',
+                        activeLibrary: 'equipment',
+                        centerTab: 'equipment',
+                        selectedThingId: linkedEquipmentInternalId,
+                        selectedThingIds: new Set(),
+                        searchQuery: '',
+                        filterGroup: -1,
+                        equipmentFilter: 'all',
+                      });
+                    }}
+                    onKeyDown={(event) => event.stopPropagation()}
+                    onMouseEnter={(event) => {
+                      event.stopPropagation();
+                      tooltip.hide();
+                    }}
+                    className="absolute bottom-1 left-1 flex h-4 w-4 items-center justify-center rounded border border-cyan-300/60 bg-cyan-700/90 text-white shadow-md shadow-black transition-colors hover:bg-cyan-500 focus:outline-none focus-visible:ring-1 focus-visible:ring-cyan-200"
+                  >
+                    <Swords className="h-2.5 w-2.5" strokeWidth={2.5} />
+                  </button>
+                )}
                 <span className={`absolute top-1 flex items-center gap-1 ${
                   thing.category === 'equipment' ? 'left-1' : 'right-1'
                 }`}>
@@ -437,7 +483,7 @@ export function ThingGrid() {
                     {publicId}
                   </span>
                 </span>
-              </button>
+              </div>
             );
           })}
         </div>

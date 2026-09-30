@@ -347,6 +347,7 @@ function CopyPasteMenu({
     }
     if (copySprites) {
       copied.frameGroups = thing.frameGroups.map(fg => ({ ...fg, sprites: [...fg.sprites], animationLengths: fg.animationLengths.map(a => ({ ...a })) }));
+      copied.materialMaskLayer = thing.materialMaskLayer ?? null;
       parts.push('Sprites');
     }
     if (copyServer) {
@@ -415,6 +416,8 @@ function CopyPasteMenu({
           newDirtyIds.add(thing.id);
           if (copiedThing.frameGroups) {
             thing.frameGroups = copiedThing.frameGroups.map(fg => ({ ...fg, sprites: [...fg.sprites], animationLengths: fg.animationLengths.map(a => ({ ...a })) }));
+            if (copiedThing.materialMaskLayer == null) delete thing.materialMaskLayer;
+            else thing.materialMaskLayer = copiedThing.materialMaskLayer;
           }
           thing.rawBytes = undefined;
           clearSpriteCache();

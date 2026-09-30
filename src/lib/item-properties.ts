@@ -1,4 +1,11 @@
-import type { ItemProperties } from './types';
+import type { ExclusiveSlotDef, ItemProperties } from './types';
+import {
+  EXCLUSIVE_SLOT_CATEGORY_CODE_BY_TYPE,
+  EXCLUSIVE_SLOT_TYPE_BY_CATEGORY_CODE,
+  ITEM_CATEGORY_CODE_BY_TYPE,
+  ITEM_SLOT_TYPES,
+  type ItemSlotType,
+} from './item-slot-types';
 import { AMMO_TYPES, ORB_DAMAGE_ELEMENTS, WEAPON_TYPES } from './weapon-type-contract';
 
 export const ITEM_PROPERTY_CODE_BY_KEY: Readonly<Record<string, number>> = {
@@ -118,7 +125,7 @@ export const ITEM_PROPERTY_CODE_BY_KEY: Readonly<Record<string, number>> = {
 const SLOT_TYPES = [
   '', 'head', 'body', 'legs', 'feet', 'left-hand', 'right-hand',
   'hand', 'two-handed', 'ring', 'necklace', 'backpack', 'belt', 'ammo',
-  'quiver', 'torch', 'pet',
+  'quiver', 'torch', 'pet', 'cape', 'mask',
 ] as const;
 const FLOOR_CHANGES = [
   '', 'north', 'east', 'south', 'west', 'down', 'southalt', 'eastalt',
@@ -134,12 +141,36 @@ const FLUID_SOURCES: readonly (string | undefined)[] = [
   undefined, undefined, undefined, undefined, undefined, undefined, 'lava',
   'rum',
 ];
-const ITEM_CATEGORIES: readonly (string | undefined)[] = [
-  '', 'rope', 'shovel', 'pick', 'knife', 'fishingRod', 'potion', 'machete',
-  undefined, undefined, 'head', 'body', 'legs', 'feet', 'left-hand',
-  'right-hand', 'hand', 'two-handed', 'ring', 'necklace', 'backpack', 'belt',
-  'quiver', 'food', 'rune', 'key', 'shield',
-];
+const itemCategories: Array<string | undefined> = [];
+itemCategories[0] = '';
+for (const [type, code] of Object.entries(ITEM_CATEGORY_CODE_BY_TYPE)) {
+  itemCategories[code] = type;
+}
+const ITEM_CATEGORIES: readonly (string | undefined)[] = Object.freeze(itemCategories);
+export const ITEM_CATEGORY_OPTIONS = Object.freeze([
+  '',
+  ...Object.entries(ITEM_CATEGORY_CODE_BY_TYPE)
+    .sort((left, right) => left[1] - right[1])
+    .map(([type]) => type),
+]);
+
+/** Categories whose instances may consume durability-style uses on the server. */
+export const LIMITED_USE_ITEM_CATEGORIES = Object.freeze([
+  'rope',
+  'shovel',
+  'pick',
+  'knife',
+  'fishingRod',
+  'machete',
+] as const);
+
+export function isLimitedUseItemCategory(value: unknown): boolean {
+  return typeof value === 'string'
+    && LIMITED_USE_ITEM_CATEGORIES.includes(value as typeof LIMITED_USE_ITEM_CATEGORIES[number]);
+}
+
+/** Item categories that have an end-to-end server restriction and client icon. */
+export const EXCLUSIVE_SLOT_TYPES = ITEM_SLOT_TYPES;
 const THING_TYPES = [
   'bed', 'container', 'corpse', 'depot', 'door', 'fluidContainer', 'key',
   'magicfield', 'mailbox', 'readable', 'rune', 'splash', 'teleport',
@@ -164,6 +195,113 @@ const ENUMS_BY_KEY: Readonly<Record<string, readonly (string | undefined)[]>> = 
   harvestMode: HARVEST_MODES,
 };
 
+/** Convert persisted ItemCategory codes to the names used by editor controls. */
+export function decodeExclusiveSlotsForEditor(value: unknown): ExclusiveSlotDef[] {
+  if (!Array.isArray(value)) throw new Error('exclusiveSlots must be an array.');
+  return value.map((candidate, index) => {
+    if (!candidate || typeof candidate !== 'object') {
+      throw new Error(`exclusiveSlots[${index}] must be an object.`);
+    }
+    const slot = candidate as Record<string, unknown>;
+    const extraKeys = Object.keys(slot).filter((key) => (
+      key !== 'slotIndex' && key !== 'allowedItemTypes' && key !== 'allowedItemIds'
+    ));
+    if (extraKeys.length > 0) {
+      throw new Error(`exclusiveSlots[${index}] contains unsupported field ${extraKeys[0]}.`);
+    }
+    if (slot.slotIndex !== index) {
+      throw new Error(`exclusiveSlots[${index}] must have slotIndex ${index}.`);
+    }
+    if (!Array.isArray(slot.allowedItemTypes)) {
+      throw new Error(`exclusiveSlots[${index}].allowedItemTypes must be an array.`);
+    }
+    const allowedItemTypes = slot.allowedItemTypes.map((type) => {
+      if (typeof type !== 'number' || !Number.isInteger(type)) {
+        throw new Error(`exclusiveSlots[${index}] contains a non-numeric item category.`);
+      }
+      const name = EXCLUSIVE_SLOT_TYPE_BY_CATEGORY_CODE[type];
+      if (!name) {
+        throw new Error(`exclusiveSlots[${index}] contains unsupported item category ${type}.`);
+      }
+      return name;
+    });
+    if (slot.allowedItemIds !== undefined && !Array.isArray(slot.allowedItemIds)) {
+      throw new Error(`exclusiveSlots[${index}].allowedItemIds must be an array.`);
+    }
+    const allowedItemIds = Array.isArray(slot.allowedItemIds)
+      ? slot.allowedItemIds.map((itemId) => {
+        if (!Number.isInteger(itemId) || itemId <= 0 || itemId > 0xffff) {
+          throw new Error(`exclusiveSlots[${index}] contains invalid item ID ${String(itemId)}.`);
+        }
+        return itemId as number;
+      })
+      : undefined;
+    return {
+      slotIndex: index,
+      allowedItemTypes,
+      ...(allowedItemIds?.length ? { allowedItemIds } : {}),
+    };
+  });
+}
+
+/** Convert editor names back to canonical ItemCategory codes for items.json. */
+export function encodeExclusiveSlotsForStorage(value: unknown): Array<{
+  slotIndex: number;
+  allowedItemTypes: number[];
+  allowedItemIds?: number[];
+}> {
+  if (!Array.isArray(value)) throw new Error('exclusiveSlots must be an array.');
+  return value.map((candidate, index) => {
+    if (!candidate || typeof candidate !== 'object') {
+      throw new Error(`exclusiveSlots[${index}] must be an object.`);
+    }
+    const slot = candidate as Record<string, unknown>;
+    if (slot.slotIndex !== index) {
+      throw new Error(`exclusiveSlots[${index}] must have slotIndex ${index}.`);
+    }
+    if (!Array.isArray(slot.allowedItemTypes)) {
+      throw new Error(`exclusiveSlots[${index}].allowedItemTypes must be an array.`);
+    }
+    const allowedItemTypes = slot.allowedItemTypes.map((type) => {
+      if (typeof type === 'number' && Number.isInteger(type)) {
+        if (EXCLUSIVE_SLOT_TYPE_BY_CATEGORY_CODE[type]) return type;
+      }
+      if (typeof type === 'string' && type in EXCLUSIVE_SLOT_CATEGORY_CODE_BY_TYPE) {
+        return EXCLUSIVE_SLOT_CATEGORY_CODE_BY_TYPE[type as ItemSlotType];
+      }
+      throw new Error(`exclusiveSlots[${index}] contains unsupported item category ${String(type)}.`);
+    });
+    const allowedItemIds = Array.isArray(slot.allowedItemIds)
+      ? slot.allowedItemIds.map((itemId) => Number(itemId))
+      : undefined;
+    return {
+      slotIndex: index,
+      allowedItemTypes,
+      ...(allowedItemIds?.length ? { allowedItemIds } : {}),
+    };
+  });
+}
+
+export function validateCanonicalExclusiveSlots(value: unknown): void {
+  const slots = encodeExclusiveSlotsForStorage(value);
+  for (const [index, slot] of slots.entries()) {
+    if (slot.allowedItemTypes.length === 0) {
+      throw new Error(`exclusiveSlots[${index}] must allow at least one item type.`);
+    }
+    if (new Set(slot.allowedItemTypes).size !== slot.allowedItemTypes.length) {
+      throw new Error(`exclusiveSlots[${index}] contains duplicate item types.`);
+    }
+    for (const itemId of slot.allowedItemIds ?? []) {
+      if (!Number.isInteger(itemId) || itemId <= 0 || itemId > 0xffff) {
+        throw new Error(`exclusiveSlots[${index}] contains invalid item ID ${String(itemId)}.`);
+      }
+    }
+    if (new Set(slot.allowedItemIds ?? []).size !== (slot.allowedItemIds ?? []).length) {
+      throw new Error(`exclusiveSlots[${index}] contains duplicate item IDs.`);
+    }
+  }
+}
+
 /**
  * Equipment modifiers are additive values. Zero has the same gameplay meaning
  * as no modifier, so keep the canonical JSON clean by removing the attribute.
@@ -180,12 +318,16 @@ function isNeutralEquipmentModifier(key: string, value: unknown): boolean {
 }
 
 function decodePropertyValue(key: string, value: unknown): unknown {
+  if (key === 'exclusiveSlots') {
+    return value === undefined ? undefined : decodeExclusiveSlotsForEditor(value);
+  }
   const values = ENUMS_BY_KEY[key];
   if (!values || typeof value !== 'number') return value;
   return values[value] ?? value;
 }
 
 function encodePropertyValue(key: string, value: unknown): unknown {
+  if (key === 'exclusiveSlots') return encodeExclusiveSlotsForStorage(value);
   const values = ENUMS_BY_KEY[key];
   if (!values || typeof value !== 'string') return value;
   const index = values.indexOf(value);
@@ -266,6 +408,23 @@ export function validateCanonicalWeaponProperties(
   }
   if (weaponType !== 'orb' && damageElement) {
     throw new Error('damageElement is exclusive to orb items.');
+  }
+}
+
+/** Max Uses is prototype data and is only meaningful for consumable tools. */
+export function validateCanonicalMaxUses(
+  properties: ItemProperties | null | undefined,
+): void {
+  const maxUses = readItemProperty(properties, 'maxUses');
+  if (maxUses === undefined) return;
+  const itemType = readItemProperty(properties, 'itemType');
+  if (!isLimitedUseItemCategory(itemType)) {
+    throw new Error(
+      `maxUses is only valid for ${LIMITED_USE_ITEM_CATEGORIES.join(', ')} items.`,
+    );
+  }
+  if (typeof maxUses !== 'number' || !Number.isInteger(maxUses) || maxUses <= 0 || maxUses > 0xffff) {
+    throw new Error('maxUses must be an integer between 1 and 65535.');
   }
 }
 

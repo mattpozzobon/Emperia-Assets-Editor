@@ -1,15 +1,27 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CopyPlus } from 'lucide-react';
 import { useOBStore } from '../store';
-import { clearSpriteCache } from '../lib/sprite-decoder';
+import { clearSpriteCache, clearSpriteCacheId, decodeSprite } from '../lib/sprite-decoder';
 import { paletteToCSS, OUTFIT_PALETTE, PALETTE_SIZE } from '../lib/outfit-colors';
 import type { OutfitColorIndices } from '../lib/outfit-colors';
+import { clearFrameGroupLayer, resizeFrameGroupLayers } from '../lib/frame-group-layout';
+import { collectMaterialBaseSpriteIds, desaturateSprite, fillMaterialMaskFromNonBlackPixels, findSharedMaterialMaskSpriteIds, materialColorToCSS, MATERIAL_MASK_COLORS, remapMaterialMaskSpriteIds } from '../lib/material-mask';
+import { MATERIAL_MASK_KINDS } from '../lib/types';
+import type { MaterialMaskKind } from '../lib/types';
 import { ParamField, StepperBtn } from './ui-primitives';
 
 const MAX_ANIMATION_FRAME_DURATION_MS = 0xFFFF_FFFF;
+const MATERIAL_MASK_OPTIONS: { kind: MaterialMaskKind; label: string; color: string }[] = [
+  { kind: MATERIAL_MASK_KINDS.leather, label: 'Leather', color: materialColorToCSS(MATERIAL_MASK_COLORS[MATERIAL_MASK_KINDS.leather]) },
+  { kind: MATERIAL_MASK_KINDS.cloth, label: 'Cloth', color: materialColorToCSS(MATERIAL_MASK_COLORS[MATERIAL_MASK_KINDS.cloth]) },
+  { kind: MATERIAL_MASK_KINDS.metal, label: 'Metal', color: materialColorToCSS(MATERIAL_MASK_COLORS[MATERIAL_MASK_KINDS.metal]) },
+  { kind: MATERIAL_MASK_KINDS.wood, label: 'Wood', color: materialColorToCSS(MATERIAL_MASK_COLORS[MATERIAL_MASK_KINDS.wood]) },
+];
 
 export function LayerPanel() {
   const selectedId = useOBStore((s) => s.selectedThingId);
   const objectData = useOBStore((s) => s.objectData);
+  const spriteData = useOBStore((s) => s.spriteData);
   const category = useOBStore((s) => s.activeCategory);
   const editVersion = useOBStore((s) => s.editVersion);
 
@@ -19,6 +31,9 @@ export function LayerPanel() {
   const playing = useOBStore((s) => s.playing);
   const outfitColors = useOBStore((s) => s.outfitColors);
   const showColorPicker = useOBStore((s) => s.showColorPicker);
+  const materialMaskPaintMode = useOBStore((s) => s.materialMaskPaintMode);
+  const materialMaskBrushSize = useOBStore((s) => s.materialMaskBrushSize);
+  const activeMaterialMaskKind = useOBStore((s) => s.activeMaterialMaskKind);
   const activeGroup = useOBStore((s) => s.activeGroup);
 
   const thing = selectedId != null ? objectData?.things.get(selectedId) ?? null : null;
@@ -28,6 +43,8 @@ export function LayerPanel() {
     || category === 'hair'
   );
   const isEffect = category === 'effect';
+  const isItem = category === 'item';
+  const supportsMaterialMask = isItem || category === 'outfit' || category === 'equipment';
 
   const group = thing?.frameGroups[activeGroup] ?? null;
   const activeGroupLabel = activeGroup === 0 ? 'Idle' : activeGroup === 1 ? 'Moving' : `Group ${activeGroup}`;
@@ -35,6 +52,224 @@ export function LayerPanel() {
   const isAnimated = group ? group.animationLength > 1 : false;
   const showOffset = isDirectionalAppearance || isEffect || (thing?.flags.hasDisplacement ?? false);
   const showColors = isDirectionalAppearance && blendLayers && (group?.layers ?? 0) >= 2;
+  const hasMaterialMask = supportsMaterialMask && thing?.materialMaskLayer != null;
+  const activeMaterialMaskLayer = thing?.materialMaskLayer;
+  const activeMaterialMaskLabel = MATERIAL_MASK_OPTIONS.find((option) => option.kind === activeMaterialMaskKind)?.label ?? 'Material';
+  const sharedMaterialMaskSpriteIdsByGroup = useMemo(() => {
+    if (!objectData || !thing || activeMaterialMaskLayer == null) return [];
+    return thing.frameGroups.map((frameGroup) => (
+      findSharedMaterialMaskSpriteIds(objectData.things.values(), thing, frameGroup, activeMaterialMaskLayer)
+    ));
+  }, [activeMaterialMaskLayer, editVersion, objectData, thing]);
+  const activeSharedMaterialMaskSpriteIds = sharedMaterialMaskSpriteIdsByGroup[activeGroup] ?? [];
+  const hasActiveGroupSharedMaterialMasks = activeSharedMaterialMaskSpriteIds.length > 0;
+  const sharedMaterialMaskReferenceCount = sharedMaterialMaskSpriteIdsByGroup.reduce(
+    (total, spriteIds) => total + spriteIds.length,
+    0,
+  );
+  const hasSharedMaterialMasks = sharedMaterialMaskReferenceCount > 0;
+
+  useEffect(() => {
+    if (hasActiveGroupSharedMaterialMasks && materialMaskPaintMode) {
+      useOBStore.setState({ materialMaskPaintMode: null });
+    }
+  }, [hasActiveGroupSharedMaterialMasks, materialMaskPaintMode]);
+
+  const markThingDirty = useCallback(() => {
+    if (!thing) return;
+    thing.rawBytes = undefined;
+    clearSpriteCache();
+    const store = useOBStore.getState();
+    const newDirtyIds = new Set(store.dirtyIds);
+    newDirtyIds.add(thing.id);
+    useOBStore.setState({ dirty: true, dirtyIds: newDirtyIds, editVersion: store.editVersion + 1 });
+  }, [thing]);
+
+  const setMaterialMaskEnabled = useCallback((enabled: boolean) => {
+    if (!thing || !supportsMaterialMask) return;
+    if (enabled) {
+      for (const frameGroup of thing.frameGroups) {
+        if (frameGroup.layers < 2) resizeFrameGroupLayers(frameGroup, 2);
+      }
+      thing.materialMaskLayer = 1;
+      useOBStore.setState({ activeMaterialMaskKind: MATERIAL_MASK_KINDS.leather, activeLayer: 1, blendLayers: true, materialMaskPaintMode: null, selectedSlots: [] });
+    } else {
+      for (const frameGroup of thing.frameGroups) clearFrameGroupLayer(frameGroup, 1);
+      delete thing.materialMaskLayer;
+      useOBStore.setState({ activeLayer: 0, blendLayers: false, materialMaskPaintMode: null, selectedSlots: [] });
+    }
+    markThingDirty();
+  }, [markThingDirty, supportsMaterialMask, thing]);
+
+  const selectMaterialMaskColor = useCallback((kind: MaterialMaskKind) => {
+    if (!thing || !hasMaterialMask) return;
+    useOBStore.setState({
+      activeMaterialMaskKind: kind,
+      activeLayer: thing.materialMaskLayer!,
+      blendLayers: false,
+      selectedSlots: [],
+    });
+  }, [hasMaterialMask, thing]);
+
+  const setPaintMode = useCallback((mode: 'paint' | 'erase') => {
+    if (activeMaterialMaskLayer == null || hasActiveGroupSharedMaterialMasks) return;
+    useOBStore.setState({
+      activeLayer: activeMaterialMaskLayer,
+      blendLayers: false,
+      materialMaskPaintMode: materialMaskPaintMode === mode ? null : mode,
+      selectedSlots: [],
+    });
+  }, [activeMaterialMaskLayer, hasActiveGroupSharedMaterialMasks, materialMaskPaintMode]);
+
+  const makeMaterialMasksUnique = useCallback(() => {
+    if (!thing || !spriteData || activeMaterialMaskLayer == null || !hasSharedMaterialMasks) return;
+
+    const store = useOBStore.getState();
+    const spriteOverrides = new Map(store.spriteOverrides);
+    const dirtySpriteIds = new Set(store.dirtySpriteIds);
+    const dirtyIds = new Set(store.dirtyIds);
+    let nextSpriteId = spriteData.spriteCount;
+    let replacementCount = 0;
+
+    for (let groupIndex = 0; groupIndex < thing.frameGroups.length; groupIndex++) {
+      const frameGroup = thing.frameGroups[groupIndex];
+      const sharedSpriteIds = sharedMaterialMaskSpriteIdsByGroup[groupIndex] ?? [];
+      const replacements = new Map<number, number>();
+
+      for (const spriteId of sharedSpriteIds) {
+        const source = spriteOverrides.get(spriteId) ?? decodeSprite(spriteData, spriteId);
+        if (!source) continue;
+        const newSpriteId = ++nextSpriteId;
+        replacements.set(spriteId, newSpriteId);
+        // A shared mask can contain pixels authored for another group or
+        // appearance. Start this group's private mask completely transparent.
+        spriteOverrides.set(newSpriteId, new ImageData(source.width, source.height));
+        dirtySpriteIds.add(newSpriteId);
+      }
+
+      if (replacements.size > 0) {
+        remapMaterialMaskSpriteIds([frameGroup], activeMaterialMaskLayer, replacements);
+        replacementCount += replacements.size;
+      }
+    }
+
+    if (replacementCount === 0) return;
+    spriteData.spriteCount = nextSpriteId;
+    thing.rawBytes = undefined;
+    dirtyIds.add(thing.id);
+    clearSpriteCache();
+    useOBStore.setState({
+      dirty: true,
+      dirtyIds,
+      spriteOverrides,
+      dirtySpriteIds,
+      materialMaskPaintMode: null,
+      selectedSlots: [],
+      editVersion: store.editVersion + 1,
+    });
+  }, [activeMaterialMaskLayer, hasSharedMaterialMasks, sharedMaterialMaskSpriteIdsByGroup, spriteData, thing]);
+
+  const desaturateBaseSprites = useCallback(() => {
+    if (!thing || !spriteData || activeMaterialMaskLayer == null) return;
+
+    const spriteIds = collectMaterialBaseSpriteIds(thing.frameGroups, activeMaterialMaskLayer);
+    if (spriteIds.length === 0) return;
+
+    const store = useOBStore.getState();
+    const spriteOverrides = new Map(store.spriteOverrides);
+    const dirtySpriteIds = new Set(store.dirtySpriteIds);
+
+    for (const spriteId of spriteIds) {
+      const source = spriteOverrides.get(spriteId) ?? decodeSprite(spriteData, spriteId);
+      if (!source) continue;
+
+      const desaturated = new ImageData(
+        new Uint8ClampedArray(source.data),
+        source.width,
+        source.height,
+      );
+      desaturateSprite(desaturated);
+      spriteOverrides.set(spriteId, desaturated);
+      dirtySpriteIds.add(spriteId);
+      clearSpriteCacheId(spriteId);
+    }
+
+    useOBStore.setState({
+      dirty: true,
+      spriteOverrides,
+      dirtySpriteIds,
+      editVersion: store.editVersion + 1,
+    });
+  }, [activeMaterialMaskLayer, spriteData, thing]);
+
+  const createMasksFromNonBlackPixels = useCallback(() => {
+    if (!thing || !spriteData || activeMaterialMaskLayer == null || hasSharedMaterialMasks) return;
+
+    const store = useOBStore.getState();
+    const spriteOverrides = new Map(store.spriteOverrides);
+    const dirtySpriteIds = new Set(store.dirtySpriteIds);
+    const dirtyIds = new Set(store.dirtyIds);
+    const maskOwners = new Map<number, number>();
+    const materialColor = MATERIAL_MASK_COLORS[activeMaterialMaskKind];
+    let nextSpriteId = spriteData.spriteCount;
+    let changed = false;
+
+    for (const frameGroup of thing.frameGroups) {
+      if (activeMaterialMaskLayer >= frameGroup.layers) continue;
+      const tilesPerLayer = frameGroup.width * frameGroup.height;
+      if (tilesPerLayer <= 0) continue;
+      const appearanceCount = frameGroup.patternX
+        * frameGroup.patternY
+        * frameGroup.patternZ
+        * frameGroup.animationLength;
+
+      for (let appearance = 0; appearance < appearanceCount; appearance++) {
+        for (let tile = 0; tile < tilesPerLayer; tile++) {
+          const appearanceStart = appearance * frameGroup.layers * tilesPerLayer;
+          const baseIndex = appearanceStart + tile;
+          const maskIndex = appearanceStart + activeMaterialMaskLayer * tilesPerLayer + tile;
+          const baseSpriteId = frameGroup.sprites[baseIndex] ?? 0;
+          if (baseSpriteId <= 0 || maskIndex >= frameGroup.sprites.length) continue;
+
+          const base = spriteOverrides.get(baseSpriteId) ?? decodeSprite(spriteData, baseSpriteId);
+          if (!base) continue;
+
+          let maskSpriteId = frameGroup.sprites[maskIndex] ?? 0;
+          const existingMask = maskSpriteId > 0
+            ? store.spriteOverrides.get(maskSpriteId) ?? decodeSprite(spriteData, maskSpriteId)
+            : null;
+
+          const existingOwner = maskOwners.get(maskSpriteId);
+          if (maskSpriteId <= 0 || (existingOwner != null && existingOwner !== baseSpriteId)) {
+            maskSpriteId = ++nextSpriteId;
+            frameGroup.sprites[maskIndex] = maskSpriteId;
+          }
+
+          const mask = existingMask
+            ? new ImageData(new Uint8ClampedArray(existingMask.data), existingMask.width, existingMask.height)
+            : new ImageData(base.width, base.height);
+          fillMaterialMaskFromNonBlackPixels(base, mask, materialColor);
+          spriteOverrides.set(maskSpriteId, mask);
+          dirtySpriteIds.add(maskSpriteId);
+          clearSpriteCacheId(maskSpriteId);
+          maskOwners.set(maskSpriteId, baseSpriteId);
+          changed = true;
+        }
+      }
+    }
+
+    if (!changed) return;
+    spriteData.spriteCount = nextSpriteId;
+    thing.rawBytes = undefined;
+    dirtyIds.add(thing.id);
+    useOBStore.setState({
+      dirty: true,
+      dirtyIds,
+      spriteOverrides,
+      dirtySpriteIds,
+      editVersion: store.editVersion + 1,
+    });
+  }, [activeMaterialMaskKind, activeMaterialMaskLayer, hasSharedMaterialMasks, spriteData, thing]);
 
   const updateFrameGroupProp = useCallback((key: string, value: number) => {
     if (!thing || !group) return;
@@ -62,10 +297,126 @@ export function LayerPanel() {
     useOBStore.setState({ dirty: true, dirtyIds: newDirtyIds, editVersion: store.editVersion + 1 });
   }, [thing, group]);
 
-  if (!thing || (!hasMultipleLayers && !showOffset && !isAnimated)) return null;
+  if (!thing || (!supportsMaterialMask && !hasMultipleLayers && !showOffset && !isAnimated)) return null;
 
   return (
     <div className="border-t border-emperia-border text-[10px] space-y-1">
+
+      {supportsMaterialMask && (
+        <>
+          <div className="px-2 py-1 bg-amber-950/30 border-b border-emperia-border/40">
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-amber-400 opacity-90">Material Mask</span>
+          </div>
+          <div className="px-3 py-2 space-y-2">
+            <div className="flex items-center gap-2">
+              <label className="flex min-w-0 items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={hasMaterialMask}
+                  onChange={(event) => setMaterialMaskEnabled(event.target.checked)}
+                  className="w-3 h-3 accent-amber-500"
+                />
+                <span className="text-emperia-text">Use material masks</span>
+              </label>
+              {hasMaterialMask && (
+                hasSharedMaterialMasks ? (
+                  <button
+                    type="button"
+                    onClick={makeMaterialMasksUnique}
+                    className="ml-auto flex shrink-0 items-center gap-1 rounded border border-amber-400/60 bg-amber-500/15 px-1.5 py-0.5 text-[8px] text-amber-300 hover:bg-amber-500/25"
+                    title={`${sharedMaterialMaskReferenceCount} material mask reference${sharedMaterialMaskReferenceCount === 1 ? ' is' : 's are'} shared across animation groups or appearances. Create fresh private masks for every group.`}
+                  >
+                    <CopyPlus className="h-2.5 w-2.5" />
+                    Make masks unique ({sharedMaterialMaskReferenceCount})
+                  </button>
+                ) : (
+                  <span
+                    className="ml-auto shrink-0 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[8px] text-emerald-400"
+                    title="The material mask sprite IDs are private in every animation group"
+                  >
+                    Masks unique
+                  </span>
+                )
+              )}
+            </div>
+            {hasMaterialMask && (
+              <div className="space-y-1.5 rounded border border-amber-500/15 bg-amber-950/10 p-2">
+                <div className="flex gap-1">
+                  {MATERIAL_MASK_OPTIONS.map((option) => {
+                    const selected = activeMaterialMaskKind === option.kind;
+                    return (
+                      <button
+                        key={option.kind}
+                        type="button"
+                        onClick={() => selectMaterialMaskColor(option.kind)}
+                        className={`flex flex-1 items-center justify-center gap-1 rounded border px-1 py-1 text-[8px] ${selected ? 'border-white/50 bg-white/10 text-white' : 'border-emperia-border text-emperia-muted hover:text-emperia-text'}`}
+                        title={`Paint ${option.label} regions`}
+                      >
+                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: option.color }} />
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-emperia-muted">All material colors share layer {activeMaterialMaskLayer != null ? activeMaterialMaskLayer + 1 : '—'}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={desaturateBaseSprites}
+                  className="w-full rounded border border-emperia-border px-2 py-1 text-[9px] text-emperia-muted hover:border-amber-400/60 hover:text-emperia-text"
+                  title="Set HSV saturation to zero for Idle and Moving sprites, excluding the material mask layer"
+                >
+                  Set Idle + Moving saturation to 0
+                </button>
+                <button
+                  type="button"
+                  onClick={createMasksFromNonBlackPixels}
+                  disabled={hasSharedMaterialMasks}
+                  className="w-full rounded border border-amber-500/30 bg-amber-950/20 px-2 py-1 text-[9px] text-amber-300 hover:border-amber-400/70 hover:bg-amber-950/35 disabled:cursor-not-allowed disabled:opacity-40"
+                  title={hasSharedMaterialMasks
+                    ? 'Make the shared mask IDs unique in every animation group before creating masks'
+                    : `Add ${activeMaterialMaskLabel} to visible, non-black pixels in Idle and Moving that do not already have a material`}
+                >
+                  Create Idle + Moving {activeMaterialMaskLabel} masks
+                </button>
+                <div className="flex items-center gap-1">
+                  <span className="mr-auto text-emperia-muted">Edit mask</span>
+                  <button
+                    type="button"
+                    onClick={() => setPaintMode('paint')}
+                    disabled={hasActiveGroupSharedMaterialMasks}
+                    title={hasActiveGroupSharedMaterialMasks ? 'Make the shared mask IDs unique before editing' : 'Paint the selected material'}
+                    className={`rounded border px-2 py-1 text-[9px] disabled:cursor-not-allowed disabled:opacity-40 ${materialMaskPaintMode === 'paint' ? 'border-amber-400 bg-amber-500/20 text-amber-300' : 'border-emperia-border text-emperia-muted hover:text-emperia-text'}`}
+                  >Paint</button>
+                  <button
+                    type="button"
+                    onClick={() => setPaintMode('erase')}
+                    disabled={hasActiveGroupSharedMaterialMasks}
+                    title={hasActiveGroupSharedMaterialMasks ? 'Make the shared mask IDs unique before editing' : 'Erase material mask pixels'}
+                    className={`rounded border px-2 py-1 text-[9px] disabled:cursor-not-allowed disabled:opacity-40 ${materialMaskPaintMode === 'erase' ? 'border-amber-400 bg-amber-500/20 text-amber-300' : 'border-emperia-border text-emperia-muted hover:text-emperia-text'}`}
+                  >Erase</button>
+                </div>
+                <label className="flex items-center gap-2">
+                  <span className="text-emperia-muted">Brush</span>
+                  <input
+                    type="range"
+                    min={1}
+                    max={8}
+                    value={materialMaskBrushSize}
+                    onChange={(event) => useOBStore.setState({ materialMaskBrushSize: Number(event.target.value) })}
+                    className="min-w-0 flex-1 accent-amber-500"
+                  />
+                  <span className="w-4 text-right font-mono text-emperia-text">{materialMaskBrushSize}</span>
+                </label>
+                <p className="text-[8px] leading-relaxed text-emperia-muted">
+                  Hold left mouse to paint and right mouse to erase. Leather is orange, Cloth is purple, Metal is blue, and Wood is green while editing. The item stays visible as a translucent guide.
+                </p>
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {/* ── LAYER ── */}
       {hasMultipleLayers && group && (
@@ -75,14 +426,14 @@ export function LayerPanel() {
           </div>
           <div className="px-3 py-2 flex items-center gap-1">
             <span className="text-emperia-muted shrink-0">Layer:</span>
-            <StepperBtn onClick={() => useOBStore.setState({ activeLayer: Math.max(0, activeLayer - 1), blendLayers: false })} disabled={blendLayers}>‹</StepperBtn>
+            <StepperBtn onClick={() => useOBStore.setState({ activeLayer: Math.max(0, activeLayer - 1), blendLayers: false, materialMaskPaintMode: null })} disabled={blendLayers}>‹</StepperBtn>
             <span className={`font-mono w-8 text-center text-[9px] ${blendLayers ? 'text-emperia-muted' : 'text-emperia-text'}`}>
               {blendLayers ? 'All' : `${activeLayer + 1}/${group.layers}`}
             </span>
-            <StepperBtn onClick={() => useOBStore.setState({ activeLayer: Math.min(group.layers - 1, activeLayer + 1), blendLayers: false })} disabled={blendLayers}>›</StepperBtn>
+            <StepperBtn onClick={() => useOBStore.setState({ activeLayer: Math.min(group.layers - 1, activeLayer + 1), blendLayers: false, materialMaskPaintMode: null })} disabled={blendLayers}>›</StepperBtn>
             <label className="flex items-center gap-0.5 cursor-pointer ml-1">
-              <input type="checkbox" checked={blendLayers} onChange={() => useOBStore.setState({ blendLayers: !blendLayers })} className="w-2.5 h-2.5 accent-emperia-accent" />
-              <span className="text-emperia-muted text-[9px]">Blend</span>
+              <input type="checkbox" checked={blendLayers} onChange={() => useOBStore.setState({ blendLayers: !blendLayers, materialMaskPaintMode: null })} className="w-2.5 h-2.5 accent-emperia-accent" />
+              <span className="text-emperia-muted text-[9px]">{hasMaterialMask ? 'Preview' : 'Blend'}</span>
             </label>
           </div>
         </>

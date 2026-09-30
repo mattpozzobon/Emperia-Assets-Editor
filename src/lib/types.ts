@@ -6,6 +6,20 @@
 export type ThingCategory = 'item' | 'outfit' | 'equipment' | 'hair' | 'effect' | 'distance';
 export type LibraryCategory = ThingCategory | 'market';
 
+export enum MaterialMaskKind {
+  Metal = 1,
+  Leather = 2,
+  Cloth = 3,
+  Wood = 4,
+}
+
+export const MATERIAL_MASK_KINDS = {
+  metal: MaterialMaskKind.Metal,
+  leather: MaterialMaskKind.Leather,
+  cloth: MaterialMaskKind.Cloth,
+  wood: MaterialMaskKind.Wood,
+} as const;
+
 export interface FrameGroup {
   type: number;
   width: number;
@@ -66,6 +80,8 @@ export interface ThingType {
   category: ThingCategory;
   flags: ThingFlags;
   frameGroups: FrameGroup[];
+  /** Single layer whose RGB colors identify Leather, Cloth, Metal, and Wood regions. */
+  materialMaskLayer?: number;
   /** Original binary bytes (flags + frame groups) for lossless round-trip */
   rawBytes?: Uint8Array;
 }
@@ -325,6 +341,8 @@ export type EquipSlotFilter =
   | 'left-hand'
   | 'right-hand'
   | 'backpack'
+  | 'cape'
+  | 'mask'
   | 'belt';
 
 /** Server-side item properties (string-keyed, same as items.json "properties"). */
@@ -456,6 +474,7 @@ export interface ItemProperties {
 /** One exclusive-slot entry inside a container's properties. */
 export interface ExclusiveSlotDef {
   slotIndex: number;
+  /** Canonical names in the editor; encoded as ItemCategory codes in items.json. */
   allowedItemTypes: string[];
   allowedItemIds?: number[];
 }

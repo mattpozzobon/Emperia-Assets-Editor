@@ -5,7 +5,12 @@ import { useOBStore } from '../store';
 import { parseObjectData } from './object-parser';
 import { compileObjectData } from './object-writer';
 import { compileSpriteData } from './sprite-writer';
-import { parseSpriteData } from './sprite-decoder';
+import { decodeSprite, parseSpriteData } from './sprite-decoder';
+import {
+  collectMaterialMaskSpriteIds,
+  normalizeLegacyMaterialMaskImage,
+  validateMaterialMaskImage,
+} from './material-mask';
 import { gzipCompress } from './emperia-format';
 import { verifyPermission } from './dir-handle-store';
 import type { ObjectData, SpriteData } from './types';
@@ -22,6 +27,9 @@ import { isItemIdentity } from './item-identity-codec';
 import {
   ITEM_PROPERTY_CODE_BY_KEY,
   readItemProperty,
+  encodeExclusiveSlotsForStorage,
+  validateCanonicalExclusiveSlots,
+  validateCanonicalMaxUses,
   validateCanonicalWeaponProperties,
   writeItemProperty,
 } from './item-properties';
@@ -94,6 +102,9 @@ const SERVER_ITEM_EXCLUDED_PROPERTIES = new Set([
   '27',
   '28',
   '29',
+  // Uses is runtime instance state; only MaxUses belongs in asset prototypes.
+  'uses',
+  '201',
 ]);
 
 type ArtifactRole = 'obj' | 'spr' | 'def' | 'localization' | 'generated';
@@ -136,6 +147,38 @@ async function sha256(buf: ArrayBuffer): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
+const FILE_WRITE_RETRY_DELAYS_MS = [0, 75, 225, 675] as const;
+
+function isTransientFileStateError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return error.name === 'NotReadableError'
+    || error.name === 'InvalidStateError'
+    || message.includes('state checked in an interface object')
+    || message.includes('modified since it was read from disk')
+    || message.includes('being used by another process');
+}
+
+async function waitForFileRetry(delayMs: number): Promise<void> {
+  if (delayMs <= 0) return;
+  await new Promise<void>((resolve) => window.setTimeout(resolve, delayMs));
+}
+
+async function verifyWrittenFile(
+  handle: FileSystemFileHandle,
+  buf: ArrayBuffer,
+  expectedHash: string,
+): Promise<void> {
+  const saved = await handle.getFile();
+  if (saved.size !== buf.byteLength) {
+    throw new Error(`Write verification failed for ${handle.name}: expected ${buf.byteLength}, got ${saved.size}.`);
+  }
+  const actualHash = await sha256(await saved.arrayBuffer());
+  if (actualHash !== expectedHash) {
+    throw new Error(`Content verification failed for ${handle.name}: SHA-256 mismatch.`);
+  }
+}
+
 async function compilePackageManifest(artifacts: CompiledArtifact[]): Promise<ArrayBuffer> {
   const files: Record<string, { sha256: string; size: number }> = {};
   for (const artifact of [...artifacts].sort((a, b) => a.name.localeCompare(b.name))) {
@@ -156,6 +199,34 @@ async function compilePackageManifest(artifacts: CompiledArtifact[]): Promise<Ar
   }, null, 2));
 }
 
+async function saveWithLocalDevelopmentBridge(
+  dir: FileSystemDirectoryHandle,
+  artifacts: CompiledArtifact[],
+): Promise<boolean> {
+  const localHost = window.location.hostname === 'localhost'
+    || window.location.hostname === '127.0.0.1';
+  if (!localHost || dir.name.toLowerCase() !== 'current') return false;
+
+  const metadata = await Promise.all(artifacts.map(async (artifact) => ({
+    name: artifact.name,
+    size: artifact.buf.byteLength,
+    sha256: await sha256(artifact.buf),
+  })));
+  const header = encodeText(JSON.stringify({ version: 1, artifacts: metadata }));
+  const prefix = new ArrayBuffer(4);
+  new DataView(prefix).setUint32(0, header.byteLength, true);
+  const response = await fetch('/api/save-assets-local', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: new Blob([prefix, header, ...artifacts.map((artifact) => artifact.buf)]),
+  });
+  const result = await response.json().catch(() => null) as { error?: string } | null;
+  if (!response.ok) {
+    throw new Error(result?.error || `Local asset save failed with HTTP ${response.status}.`);
+  }
+  return true;
+}
+
 function validateJson(buf: ArrayBuffer, label: string): void {
   try {
     JSON.parse(new TextDecoder().decode(buf));
@@ -168,38 +239,41 @@ async function writeAndVerify(
   handle: FileSystemFileHandle,
   buf: ArrayBuffer,
 ): Promise<void> {
-  const writable = await handle.createWritable();
-  try {
-    await writable.write(buf);
-    await writable.close();
-  } catch (error) {
-    await writable.abort().catch(() => undefined);
-    throw error;
-  }
-  const saved = await handle.getFile();
-  if (saved.size !== buf.byteLength) {
-    throw new Error(`Write verification failed for ${handle.name}: expected ${buf.byteLength}, got ${saved.size}.`);
-  }
-  const expected = new Uint8Array(buf);
-  const reader = saved.stream().getReader();
-  let offset = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      for (let index = 0; index < value.length; index++) {
-        if (value[index] !== expected[offset + index]) {
-          throw new Error(`Content verification failed for ${handle.name} at byte ${offset + index}.`);
-        }
+  const expectedHash = await sha256(buf);
+  let lastError: unknown;
+
+  for (const delayMs of FILE_WRITE_RETRY_DELAYS_MS) {
+    await waitForFileRetry(delayMs);
+    let writable: FileSystemWritableFileStream | null = null;
+    try {
+      writable = await handle.createWritable();
+      await writable.write(buf);
+      await writable.close();
+      writable = null;
+      await verifyWrittenFile(handle, buf, expectedHash);
+      return;
+    } catch (error) {
+      lastError = error;
+      await writable?.abort().catch(() => undefined);
+
+      // A close may have committed successfully even when Chromium reports a
+      // stale File snapshot. Verify before rewriting the large artifact.
+      try {
+        await verifyWrittenFile(handle, buf, expectedHash);
+        return;
+      } catch (verifyError) {
+        lastError = verifyError;
       }
-      offset += value.length;
+      if (!isTransientFileStateError(error) && !isTransientFileStateError(lastError)) {
+        throw error;
+      }
     }
-  } finally {
-    reader.releaseLock();
   }
-  if (offset !== expected.length) {
-    throw new Error(`Content verification failed for ${handle.name}: expected ${expected.length} bytes, read ${offset}.`);
-  }
+
+  const detail = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(
+    `${detail} The file remained busy or changed during verification; stop any process holding it and retry.`,
+  );
 }
 
 async function removeObsoletePackageArtifacts(dir: FileSystemDirectoryHandle): Promise<void> {
@@ -542,6 +616,23 @@ export async function runCompile(
   }
 
   if (!await runStep(0, async () => {
+    for (const [appearanceId, thing] of od.things) {
+      if (thing.materialMaskLayer == null) continue;
+      if (thing.materialMaskLayer !== 1) {
+        throw new Error(`Appearance ${appearanceId} must keep its material mask on layer 2.`);
+      }
+      for (const spriteId of collectMaterialMaskSpriteIds(thing.frameGroups, 1)) {
+        const image = spriteOverrides.get(spriteId) ?? decodeSprite(sd, spriteId);
+        if (!image) {
+          throw new Error(`Material mask sprite ${spriteId} for appearance ${appearanceId} is missing.`);
+        }
+        if (normalizeLegacyMaterialMaskImage(image)) spriteOverrides.set(spriteId, image);
+        const error = validateMaterialMaskImage(image);
+        if (error) {
+          throw new Error(`Invalid material mask for appearance ${appearanceId}, sprite ${spriteId}: ${error}`);
+        }
+      }
+    }
     if (sourceNames.def && (!state.definitionsLoaded || itemDefinitions.size === 0)) {
       throw new Error(
         `${sourceNames.def} was found in the asset package but was not loaded. `
@@ -562,14 +653,19 @@ export async function runCompile(
       od.itemSeatDefinitions,
     );
     reparsedObject = parseObjectData(buf);
-    if (reparsedObject.formatVersion !== 11) {
-      throw new Error(`Generated EOBJ v${reparsedObject.formatVersion}; expected v11.`);
+    if (reparsedObject.formatVersion !== 15) {
+      throw new Error(`Generated EOBJ v${reparsedObject.formatVersion}; expected v15.`);
     }
     if (reparsedObject.itemAppearances.size !== itemAppearances.size) {
       throw new Error('Generated EOBJ item mapping is incomplete.');
     }
     if (reparsedObject.itemIdentities.size !== itemIdentities.size) {
       throw new Error('Generated EOBJ item identity table is incomplete.');
+    }
+    for (const [appearanceId, thing] of od.things) {
+      if (reparsedObject.things.get(appearanceId)?.materialMaskLayer !== thing.materialMaskLayer) {
+        throw new Error(`Generated EOBJ material mask metadata is incomplete for appearance ${appearanceId}.`);
+      }
     }
     if (reparsedObject.equipmentAppearances.size !== equipmentAppearances.size) {
       throw new Error('Generated EOBJ equipment catalog is incomplete.');
@@ -614,6 +710,7 @@ export async function runCompile(
       const definition = itemDefinitions.get(itemId)!;
       try {
         validateCanonicalWeaponProperties(definition.properties);
+        validateCanonicalMaxUses(definition.properties);
       } catch (error) {
         throw new Error(`Item ${itemId}: ${error instanceof Error ? error.message : String(error)}`);
       }
@@ -624,6 +721,7 @@ export async function runCompile(
           if (SERVER_ITEM_EXCLUDED_PROPERTIES.has(key)) continue;
           if (!/^\d+$/.test(key)) {
             if (ITEM_PROPERTY_CODE_BY_KEY[key] != null) {
+              if (key === 'exclusiveSlots') validateCanonicalExclusiveSlots(value);
               writeItemProperty(properties, key, value);
               continue;
             }
@@ -644,7 +742,12 @@ export async function runCompile(
             );
           }
           if (value !== undefined && value !== null && value !== '') {
-            properties[key] = value;
+            if (key === String(ITEM_PROPERTY_CODE_BY_KEY.exclusiveSlots)) {
+              validateCanonicalExclusiveSlots(value);
+              properties[key] = encodeExclusiveSlotsForStorage(value) as unknown as import('./types').ExclusiveSlotDef[];
+            } else {
+              properties[key] = value;
+            }
           }
         }
         if (Object.keys(properties).length === 0) properties = null;
@@ -765,8 +868,11 @@ export async function runCompile(
       if (!await sourcePermission) {
         throw new Error(`Write permission was not granted for source folder "${sourceDir.name}".`);
       }
-      await saveDirectoryBatch(sourceDir, artifacts, true);
-      await removeObsoletePackageArtifacts(sourceDir);
+      const savedByLocalBridge = await saveWithLocalDevelopmentBridge(sourceDir, artifacts);
+      if (!savedByLocalBridge) {
+        await saveDirectoryBatch(sourceDir, artifacts, true);
+        await removeObsoletePackageArtifacts(sourceDir);
+      }
       for (const artifact of artifacts) {
         outputs.push({ name: artifact.name, destination: sourceDir.name, size: artifact.buf.byteLength });
       }

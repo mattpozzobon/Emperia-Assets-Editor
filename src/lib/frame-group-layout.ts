@@ -35,3 +35,17 @@ export function resizeFrameGroupLayers(group: FrameGroup, newLayerCount: number)
   group.layers = newLayerCount;
   group.sprites = resizedSprites;
 }
+
+/** Removes every reference from one layer without disturbing frame strides. */
+export function clearFrameGroupLayer(group: FrameGroup, layer: number): void {
+  if (layer < 0 || layer >= group.layers) return;
+  const tilesPerLayer = group.width * group.height;
+  const appearanceCount = group.patternX
+    * group.patternY
+    * group.patternZ
+    * group.animationLength;
+  for (let appearance = 0; appearance < appearanceCount; appearance++) {
+    const start = (appearance * group.layers + layer) * tilesPerLayer;
+    group.sprites.fill(0, start, start + tilesPerLayer);
+  }
+}

@@ -326,6 +326,16 @@ export function parseObjectData(buffer: ArrayBuffer): ObjectData {
       itemIdentities.set(packet.readUInt16(), decodeItemIdentity(packet.readUInt8()));
     }
   }
+  const materialMaskLayers = new Map<number, number>();
+  if (formatVersion >= 12) {
+    const materialMaskCount = packet.readUInt16();
+    for (let index = 0; index < materialMaskCount; index++) {
+      const appearanceId = packet.readUInt16();
+      const materialMaskLayer = formatVersion >= 15 ? 1 : packet.readUInt8();
+      if (formatVersion === 13) packet.readUInt8(); // Legacy per-item kind; v14+ stores kinds in mask RGB.
+      materialMaskLayers.set(appearanceId, materialMaskLayer);
+    }
+  }
   const equipmentAppearances = new Map<number, import('./types').EquipmentAppearance>();
   const visualEquipmentAppearances = new Map<number, import('./types').VisualEquipmentAppearance>();
   const hairDefinitions = new Map<number, import('./types').HairDefinition>();
@@ -534,7 +544,15 @@ export function parseObjectData(buffer: ArrayBuffer): ObjectData {
     else if (id <= effectEnd) category = 'effect';
     else category = 'distance';
 
-    things.set(id, { id, category, flags, frameGroups, rawBytes });
+    const materialMaskLayer = materialMaskLayers.get(id);
+    things.set(id, {
+      id,
+      category,
+      flags,
+      frameGroups,
+      ...(materialMaskLayer != null ? { materialMaskLayer } : {}),
+      rawBytes,
+    });
   }
 
   const parsed: ObjectData = {
