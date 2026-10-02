@@ -522,7 +522,9 @@ export const enum HairRace {
   Human = 1 << 0,  // 1
   Demon = 1 << 1,  // 2
   Orc   = 1 << 2,  // 4
+  Npc   = 1 << 3,  // 8 — never offered to player characters
 }
+/** All player-selectable races. NPC is intentionally excluded. */
 export const HAIR_RACE_ALL = HairRace.Human | HairRace.Demon | HairRace.Orc; // 7
 
 /** Gender bitmask flags — matches server Sex enum values as bit positions. */
@@ -536,7 +538,9 @@ export const HAIR_GENDER_ALL = HairGender.Male | HairGender.Female; // 3
 export const enum HairTier {
   Free  = 1 << 0,  // 1 (Commoner)
   Noble = 1 << 1,  // 2
+  Special = 1 << 2, // 4 — available through a special purchase
 }
+/** Standard account tiers. Special is intentionally excluded. */
 export const HAIR_TIER_ALL = HairTier.Free | HairTier.Noble; // 3
 
 /** A single hair definition entry. */

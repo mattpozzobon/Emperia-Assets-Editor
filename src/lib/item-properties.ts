@@ -141,17 +141,73 @@ const FLUID_SOURCES: readonly (string | undefined)[] = [
   undefined, undefined, undefined, undefined, undefined, undefined, 'lava',
   'rum',
 ];
+const EDITOR_ITEM_CATEGORY_CODE_BY_TYPE = Object.freeze({
+  ...ITEM_CATEGORY_CODE_BY_TYPE,
+  // Food is both an exclusive-slot category and an assignable item category.
+  // Reuse the shared protocol code so itemType round-trips as numeric value 23.
+  food: EXCLUSIVE_SLOT_CATEGORY_CODE_BY_TYPE.food,
+  // Editor-owned market taxonomy. These codes intentionally follow the
+  // protocol-owned category range so they remain stable in items.json.
+  wood: 33,
+  metal: 34,
+  cloth: 35,
+  leather: 36,
+  alchemy: 37,
+});
 const itemCategories: Array<string | undefined> = [];
 itemCategories[0] = '';
-for (const [type, code] of Object.entries(ITEM_CATEGORY_CODE_BY_TYPE)) {
+for (const [type, code] of Object.entries(EDITOR_ITEM_CATEGORY_CODE_BY_TYPE)) {
   itemCategories[code] = type;
 }
 const ITEM_CATEGORIES: readonly (string | undefined)[] = Object.freeze(itemCategories);
+export const ITEM_CATEGORY_GROUPS = Object.freeze([
+  {
+    key: 'tools',
+    label: 'Tools',
+    description: 'Gathering and utility tools',
+    options: [
+      { value: 'rope', label: 'Rope', description: 'Climbing and traversal tool' },
+      { value: 'shovel', label: 'Shovel', description: 'Digging tool' },
+      { value: 'pick', label: 'Pick', description: 'Mining tool' },
+      { value: 'knife', label: 'Knife', description: 'Cutting and skinning tool' },
+      { value: 'fishingRod', label: 'Fishing Rod', description: 'Fishing tool' },
+      { value: 'machete', label: 'Machete', description: 'Clearing and chopping tool' },
+    ],
+  },
+  {
+    key: 'consumables',
+    label: 'Consumables',
+    description: 'Items intended to be consumed',
+    options: [
+      { value: 'potion', label: 'Potion', description: 'Drinkable or usable potion' },
+      { value: 'food', label: 'Food', description: 'Food and provisions' },
+    ],
+  },
+  {
+    key: 'materials',
+    label: 'Materials',
+    description: 'Crafting and trade materials',
+    options: [
+      { value: 'wood', label: 'Wood', description: 'Logs, planks, and wooden components' },
+      { value: 'metal', label: 'Metal', description: 'Ore, ingots, and metal components' },
+      { value: 'cloth', label: 'Cloth', description: 'Fibres, fabric, and cloth components' },
+      { value: 'leather', label: 'Leather', description: 'Hides and leather components' },
+      { value: 'alchemy', label: 'Alchemy', description: 'Herbs, reagents, and alchemical components' },
+    ],
+  },
+  {
+    key: 'resources',
+    label: 'Resources',
+    description: 'Harvested and creature-sourced items',
+    options: [
+      { value: 'creatureProduct', label: 'Creature Product', description: 'Loot harvested from creatures' },
+    ],
+  },
+] as const);
+
 export const ITEM_CATEGORY_OPTIONS = Object.freeze([
   '',
-  ...Object.entries(ITEM_CATEGORY_CODE_BY_TYPE)
-    .sort((left, right) => left[1] - right[1])
-    .map(([type]) => type),
+  ...ITEM_CATEGORY_GROUPS.flatMap((group) => group.options.map((option) => option.value)),
 ]);
 
 /** Categories whose instances may consume durability-style uses on the server. */

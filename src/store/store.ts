@@ -2,7 +2,7 @@
  * Global state for the Assets Editor using Zustand.
  */
 import { create } from 'zustand';
-import { ITEM_LOCALES, type ThingType, type ThingCategory, type ThingFlags, type FrameGroup, type ItemDefinition, type ItemProperties } from '../lib/types';
+import { HAIR_GENDER_ALL, HAIR_RACE_ALL, HAIR_TIER_ALL, ITEM_LOCALES, type ThingType, type ThingCategory, type ThingFlags, type FrameGroup, type ItemDefinition, type ItemProperties } from '../lib/types';
 import { parseObjectData } from '../lib/object-parser';
 import { parseSpriteData, clearSpriteCache, clearSpriteCacheId } from '../lib/sprite-decoder';
 import { maybeDecompress } from '../lib/emperia-format';
@@ -16,6 +16,7 @@ import { createSpriteGroupSlice } from './sprite-group-slice';
 import { sourceHash, sourceTextFromDefinition } from '../lib/item-localization';
 import { consolidateItemIdentity } from '../lib/item-identity';
 import { hasEquipmentClassification, readItemProperty } from '../lib/item-properties';
+import { getDisplayId } from './derived';
 
 function emptyItemLocalizations() {
   return {
@@ -420,6 +421,9 @@ export const useOBStore = create<OBState>((set, get) => ({
       appearanceId: data.appearanceId ?? existing?.appearanceId ?? appearanceId,
       flags: data.flags ?? existing?.flags ?? 0,
       group: data.group ?? existing?.group ?? 0,
+      topOrder: Object.prototype.hasOwnProperty.call(data, 'topOrder')
+        ? data.topOrder
+        : existing?.topOrder,
       properties: consolidateItemIdentity(
         data.properties !== undefined
           ? data.properties
@@ -929,6 +933,27 @@ export const useOBStore = create<OBState>((set, get) => ({
 
     }
 
+    if (cat === 'hair') {
+      const hairDefinitions = new Map(objectData.hairDefinitions);
+      let hairId = 1;
+      while (hairDefinitions.has(hairId)) hairId++;
+      const sortOrder = Array.from(hairDefinitions.values()).reduce(
+        (highest, hair) => Math.max(highest, hair.sortOrder),
+        -1,
+      ) + 1;
+      hairDefinitions.set(hairId, {
+        hairId,
+        name: `New Hair ${hairId}`,
+        appearanceId: getDisplayId(objectData, insertId),
+        races: HAIR_RACE_ALL,
+        genders: HAIR_GENDER_ALL,
+        tiers: HAIR_TIER_ALL,
+        sortOrder,
+      });
+      stateUpdate.objectData = { ...objectData, hairDefinitions };
+      stateUpdate.selectedHairId = hairId;
+    }
+
     set(stateUpdate);
 
     return insertId;
@@ -976,40 +1001,53 @@ export const useOBStore = create<OBState>((set, get) => ({
   },
 
   clearThing: (id) => {
-    const { objectData, editVersion } = get();
+    get().clearThings([id]);
+  },
+
+  clearThings: (ids) => {
+    const {
+      objectData,
+      editVersion,
+      dirtyIds,
+      definitionsLoaded,
+      itemDefinitions,
+    } = get();
     if (!objectData) return;
-    const thing = objectData.things.get(id);
-    if (!thing) return;
 
-    // Strip the thing down to an empty placeholder — zero sprites, zero flags.
-    // The ID slot stays so nothing shifts.
-    const emptyFlags: ThingFlags = {
-      ground: false, groundBorder: false, onBottom: false, onTop: false,
-      container: false, stackable: false, forceUse: false, multiUse: false,
-      writable: false, writableOnce: false, fluidContainer: false, splash: false,
-      notWalkable: false, notMoveable: false, blockProjectile: false, notPathable: false,
-      pickupable: false, hangable: false, hookSouth: false, hookEast: false,
-      rotateable: false, hasLight: false, translucent: false,
-      hasDisplacement: false, hasElevation: false,
-      animateAlways: false, hasMinimapColor: false,
-      renderBelowCreatures: false,
-    };
+    const requestedIds = new Set(ids);
+    const clearedIds = new Set<number>();
+    for (const id of requestedIds) {
+      const thing = objectData.things.get(id);
+      if (!thing) continue;
 
-    const emptyFrameGroup = {
-      type: 0, width: 1, height: 1, layers: 1,
-      patternX: 1, patternY: 1, patternZ: 1,
-      animationLength: 1, asynchronous: 0, nLoop: 0, start: 0,
-      animationLengths: [{ min: 0, max: 0 }],
-      sprites: [0],
-    };
+      // Strip the thing down to an empty placeholder. The ID slot stays so
+      // category ranges and references do not shift during a batch clear.
+      thing.flags = {
+        ground: false, groundBorder: false, onBottom: false, onTop: false,
+        container: false, stackable: false, forceUse: false, multiUse: false,
+        writable: false, writableOnce: false, fluidContainer: false, splash: false,
+        notWalkable: false, notMoveable: false, blockProjectile: false, notPathable: false,
+        pickupable: false, hangable: false, hookSouth: false, hookEast: false,
+        rotateable: false, hasLight: false, translucent: false,
+        hasDisplacement: false, hasElevation: false,
+        animateAlways: false, hasMinimapColor: false,
+        renderBelowCreatures: false,
+      };
+      thing.frameGroups = [{
+        type: 0, width: 1, height: 1, layers: 1,
+        patternX: 1, patternY: 1, patternZ: 1,
+        animationLength: 1, asynchronous: 0, nLoop: 0, start: 0,
+        animationLengths: [{ min: 0, max: 0 }],
+        sprites: [0],
+      }];
+      delete thing.materialMaskLayer;
+      thing.rawBytes = undefined;
+      clearedIds.add(id);
+    }
+    if (clearedIds.size === 0) return;
 
-    thing.flags = emptyFlags;
-    thing.frameGroups = [emptyFrameGroup];
-    delete thing.materialMaskLayer;
-    thing.rawBytes = undefined;
-
-    const newDirtyIds = new Set(get().dirtyIds);
-    newDirtyIds.add(id);
+    const newDirtyIds = new Set(dirtyIds);
+    for (const id of clearedIds) newDirtyIds.add(id);
 
     const stateUpdate: Partial<OBState> = {
       dirty: true,
@@ -1017,14 +1055,42 @@ export const useOBStore = create<OBState>((set, get) => ({
       editVersion: editVersion + 1,
     };
 
-    // Also clear public item definition properties.
-    if (thing.category === 'item' && get().definitionsLoaded) {
-      const { itemDefinitions, appearanceToItemIds } = get();
-      const itemId = appearanceToItemIds.get(id);
-      if (itemId != null && itemDefinitions.has(itemId)) {
-        const newDefs = new Map(itemDefinitions);
-        newDefs.set(itemId, { itemId, appearanceId: id, flags: 0, group: 0, properties: null });
-        stateUpdate.itemDefinitions = newDefs;
+    // Clear every public definition attached to one of the selected item
+    // appearances, including aliases that share the same visual slot.
+    if (definitionsLoaded) {
+      const newDefs = new Map(itemDefinitions);
+      let definitionsChanged = false;
+      for (const [itemId, definition] of itemDefinitions) {
+        if (!clearedIds.has(definition.appearanceId)) continue;
+        newDefs.set(itemId, {
+          itemId,
+          appearanceId: definition.appearanceId,
+          flags: 0,
+          group: 0,
+          properties: null,
+        });
+        definitionsChanged = true;
+      }
+      if (definitionsChanged) stateUpdate.itemDefinitions = newDefs;
+    }
+
+    // Seating configuration is edited alongside item properties, so it must
+    // not survive clearing the owning slot.
+    const linkedItemIds = new Set<number>();
+    for (const [itemId, appearanceId] of objectData.itemAppearances) {
+      if (clearedIds.has(appearanceId)) linkedItemIds.add(itemId);
+    }
+    for (const [itemId, definition] of itemDefinitions) {
+      if (clearedIds.has(definition.appearanceId)) linkedItemIds.add(itemId);
+    }
+    if (linkedItemIds.size > 0) {
+      const itemSeatDefinitions = new Map(objectData.itemSeatDefinitions);
+      let seatsChanged = false;
+      for (const itemId of linkedItemIds) {
+        seatsChanged = itemSeatDefinitions.delete(itemId) || seatsChanged;
+      }
+      if (seatsChanged) {
+        stateUpdate.objectData = { ...objectData, itemSeatDefinitions };
       }
     }
 

@@ -10,7 +10,7 @@ import { useOBStore, getDisplayId } from '../store';
 import { decodeSprite } from '../lib/sprite-decoder';
 import { applyOutfitMask } from '../lib/outfit-colors';
 import type { HairDefinition, ObjectData, SpriteData, FrameGroup } from '../lib/types';
-import { HairRace, HairGender, HairTier, HAIR_RACE_ALL, HAIR_GENDER_ALL, HAIR_TIER_ALL } from '../lib/types';
+import { HairRace, HairGender, HairTier, HAIR_RACE_ALL, HAIR_TIER_ALL } from '../lib/types';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -18,6 +18,7 @@ const RACE_OPTIONS = [
   { flag: HairRace.Human as number, label: 'Human' },
   { flag: HairRace.Demon as number, label: 'Demon' },
   { flag: HairRace.Orc as number, label: 'Orc' },
+  { flag: HairRace.Npc as number, label: 'NPC' },
 ] as const;
 
 const GENDER_OPTIONS = [
@@ -28,21 +29,43 @@ const GENDER_OPTIONS = [
 const TIER_OPTIONS = [
   { flag: HairTier.Free as number, label: 'Free' },
   { flag: HairTier.Noble as number, label: 'Noble' },
+  { flag: HairTier.Special as number, label: 'Special' },
 ] as const;
 
-type RaceFilter = 'all' | 'human' | 'demon' | 'orc';
+type RaceFilter = 'all' | 'human' | 'demon' | 'orc' | 'npc';
 type GenderFilter = 'all' | 'male' | 'female';
-type TierFilter = 'all' | 'free' | 'noble';
+type TierFilter = 'all' | 'free' | 'noble' | 'special';
 
 const RACE_FILTER_FLAG: Record<RaceFilter, number> = {
-  all: 0, human: HairRace.Human as number, demon: HairRace.Demon as number, orc: HairRace.Orc as number,
+  all: 0,
+  human: HairRace.Human as number,
+  demon: HairRace.Demon as number,
+  orc: HairRace.Orc as number,
+  npc: HairRace.Npc as number,
 };
 const GENDER_FILTER_FLAG: Record<GenderFilter, number> = {
   all: 0, male: HairGender.Male as number, female: HairGender.Female as number,
 };
 const TIER_FILTER_FLAG: Record<TierFilter, number> = {
-  all: 0, free: HairTier.Free as number, noble: HairTier.Noble as number,
+  all: 0,
+  free: HairTier.Free as number,
+  noble: HairTier.Noble as number,
+  special: HairTier.Special as number,
 };
+
+function normalizeExclusiveChoice(
+  current: number,
+  next: number,
+  exclusiveFlag: number,
+  regularFlags: number,
+  fallback: number,
+): number {
+  const exclusiveWasSelected = (current & exclusiveFlag) !== 0;
+  const exclusiveIsSelected = (next & exclusiveFlag) !== 0;
+  if (!exclusiveWasSelected && exclusiveIsSelected) return exclusiveFlag;
+  if (exclusiveWasSelected && (next & regularFlags) !== 0) return next & regularFlags;
+  return next || fallback;
+}
 
 // ─── Outfit Thumbnail (reusable, renders outfit composite) ──────────────────
 
@@ -467,9 +490,38 @@ function HairDetail({ hair }: { hair: HairDefinition }) {
       <div className="w-full h-px bg-emperia-border" />
 
       {/* Constraints */}
-      <BitmaskCheckboxes label="Races" options={RACE_OPTIONS} value={hair.races} onChange={(v) => update({ races: v || 1 })} />
+      <BitmaskCheckboxes
+        label="Races"
+        options={RACE_OPTIONS}
+        value={hair.races}
+        onChange={(value) => update({
+          races: normalizeExclusiveChoice(
+            hair.races,
+            value,
+            HairRace.Npc,
+            HAIR_RACE_ALL,
+            HairRace.Human,
+          ),
+        })}
+      />
       <BitmaskCheckboxes label="Gender" options={GENDER_OPTIONS} value={hair.genders} onChange={(v) => update({ genders: v || 1 })} />
-      <BitmaskCheckboxes label="Account Tier" options={TIER_OPTIONS} value={hair.tiers} onChange={(v) => update({ tiers: v || 1 })} />
+      <BitmaskCheckboxes
+        label="Account Tier"
+        options={TIER_OPTIONS}
+        value={hair.tiers}
+        onChange={(value) => update({
+          tiers: normalizeExclusiveChoice(
+            hair.tiers,
+            value,
+            HairTier.Special,
+            HAIR_TIER_ALL,
+            HairTier.Free,
+          ),
+        })}
+      />
+      <p className="text-[9px] leading-4 text-emperia-muted/70">
+        NPC hairs are hidden from player selection. Special hairs require a purchase or unlock.
+      </p>
 
       {/* Validation warnings */}
       {hair.appearanceId < 0 && (
@@ -492,7 +544,6 @@ export function HairEditor() {
   const objectData = useOBStore((s) => s.objectData);
   const selectedHairId = useOBStore((s) => s.selectedHairId);
   const setSelectedHairId = useOBStore((s) => s.setSelectedHairId);
-  const addHairDefinition = useOBStore((s) => s.addHairDefinition);
   const addThing = useOBStore((s) => s.addThing);
   const editVersion = useOBStore((s) => s.editVersion);
   const hairDefinitions = useMemo(
@@ -524,21 +575,8 @@ export function HairEditor() {
 
   const handleAdd = useCallback(() => {
     if (!objectData) return;
-    const existingIds = new Set(hairDefinitions.map((h) => h.hairId));
-    let newId = 1;
-    while (existingIds.has(newId)) newId++;
-    const internalId = addThing('hair');
-    if (internalId == null) return;
-    addHairDefinition({
-      hairId: newId,
-      name: `New Hair ${newId}`,
-      appearanceId: getDisplayId(objectData, internalId),
-      races: HAIR_RACE_ALL,
-      genders: HAIR_GENDER_ALL,
-      tiers: HAIR_TIER_ALL,
-      sortOrder: hairDefinitions.length,
-    });
-  }, [objectData, hairDefinitions, addHairDefinition, addThing]);
+    addThing('hair');
+  }, [objectData, addThing]);
 
   if (!objectData) {
     return (
@@ -575,11 +613,11 @@ export function HairEditor() {
           </div>
           <div className="flex items-center gap-1 flex-wrap">
             <FilterDropdown label="Race" value={raceFilter} onChange={(v) => setRaceFilter(v as RaceFilter)}
-              options={[{ value: 'all', label: 'All Races' }, { value: 'human', label: 'Human' }, { value: 'demon', label: 'Demon' }, { value: 'orc', label: 'Orc' }]} />
+              options={[{ value: 'all', label: 'All Races' }, { value: 'human', label: 'Human' }, { value: 'demon', label: 'Demon' }, { value: 'orc', label: 'Orc' }, { value: 'npc', label: 'NPC Only' }]} />
             <FilterDropdown label="Gender" value={genderFilter} onChange={(v) => setGenderFilter(v as GenderFilter)}
               options={[{ value: 'all', label: 'All' }, { value: 'male', label: 'Male' }, { value: 'female', label: 'Female' }]} />
             <FilterDropdown label="Tier" value={tierFilter} onChange={(v) => setTierFilter(v as TierFilter)}
-              options={[{ value: 'all', label: 'All' }, { value: 'free', label: 'Free' }, { value: 'noble', label: 'Noble' }]} />
+              options={[{ value: 'all', label: 'All' }, { value: 'free', label: 'Free' }, { value: 'noble', label: 'Noble' }, { value: 'special', label: 'Special' }]} />
             <span className="text-[10px] text-emperia-muted ml-auto shrink-0">{filtered.length}/{hairDefinitions.length}</span>
           </div>
         </div>

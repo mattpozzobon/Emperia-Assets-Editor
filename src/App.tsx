@@ -128,6 +128,25 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const blurPointerActivatedCheckbox = (event: MouseEvent) => {
+      // Keyboard-triggered clicks have no click count. Keep focus for keyboard users.
+      if (event.detail === 0 || !(event.target instanceof Element)) return;
+
+      const checkbox = event.target instanceof HTMLInputElement && event.target.type === 'checkbox'
+        ? event.target
+        : event.target.closest('label')?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+
+      if (!checkbox) return;
+
+      // Label clicks move focus as a default browser action after this event dispatches.
+      requestAnimationFrame(() => checkbox.blur());
+    };
+
+    document.addEventListener('click', blurPointerActivatedCheckbox, true);
+    return () => document.removeEventListener('click', blurPointerActivatedCheckbox, true);
+  }, []);
+
   const beginResize = (
     target: ResizeTarget,
     width: number,
@@ -236,15 +255,7 @@ export default function App() {
             {centerTab === 'texture' && <SpritePreview />}
             {activeLibrary === 'item' && centerTab === 'properties' && <PropertyInspector />}
             {activeLibrary === 'market' && centerTab === 'properties' && (
-              <div
-                className="p-4"
-                onChangeCapture={(event) => {
-                  if (!(event.target instanceof HTMLInputElement) || event.target.type !== 'checkbox') return;
-                  requestAnimationFrame(() => {
-                    document.getElementById('object-library-grid')?.focus({ preventScroll: true });
-                  });
-                }}
-              >
+              <div className="p-4">
                 <ServerPropertiesEditor mode="availability" />
               </div>
             )}

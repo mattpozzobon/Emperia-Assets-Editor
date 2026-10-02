@@ -384,6 +384,7 @@ export function PropertyInspector() {
 
   const copiedThing = useOBStore((s) => s.copiedThing);
   const hasCopiedFlags = !!copiedThing?.flags;
+  const hasCopiedItemDefinition = copiedThing?.itemDefinition != null;
   const textMode: TextAccessMode = thing?.flags.writableOnce
     ? 'write-once'
     : thing?.flags.writable || itemProperties?.writeable === true
@@ -405,6 +406,35 @@ export function PropertyInspector() {
     if (!ct?.flags) return;
     updateThingFlags(thing.id, { ...ct.flags });
   }, [thing, updateThingFlags]);
+
+  const handleCopyItemDefinition = useCallback(() => {
+    if (!thing || thing.category !== 'item') return;
+    const definition = itemId != null ? itemDefinitions.get(itemId) : undefined;
+    useOBStore.setState({
+      copiedThing: {
+        itemDefinition: structuredClone(definition ?? {
+          itemId: itemId ?? thing.id,
+          appearanceId: thing.id,
+          flags: 0,
+          group: 0,
+          properties: null,
+        }),
+        label: 'Item Definition',
+      },
+    });
+  }, [itemDefinitions, itemId, thing]);
+
+  const handlePasteItemDefinition = useCallback(() => {
+    if (!thing || thing.category !== 'item') return;
+    const definition = useOBStore.getState().copiedThing?.itemDefinition;
+    if (!definition) return;
+    updateItemDefinition(thing.id, {
+      flags: definition.flags,
+      group: definition.group,
+      topOrder: definition.topOrder,
+      properties: definition.properties ? structuredClone(definition.properties) : null,
+    });
+  }, [thing, updateItemDefinition]);
 
   if (!thing) {
     return (
@@ -535,13 +565,44 @@ export function PropertyInspector() {
         </section>
       </div>
       <section className="border-t border-emperia-border/70 pt-4">
-        <div className="mb-2.5">
-          <h3 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emperia-muted">
-            Item Definition
-          </h3>
-          <p className="mt-0.5 text-[9px] text-emperia-muted/60">
-            Server gameplay metadata stored in items.json
-          </p>
+        <div className="mb-2.5 flex min-h-7 items-center justify-between gap-3">
+          <div>
+            <h3 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emperia-muted">
+              Item Definition
+            </h3>
+            <p className="mt-0.5 text-[9px] text-emperia-muted/60">
+              Server gameplay metadata stored in items.json
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {hasCopiedItemDefinition && (
+              <span className="mr-1 text-[9px] text-emperia-accent">{copiedThing?.label}</span>
+            )}
+            <button
+              type="button"
+              onClick={handleCopyItemDefinition}
+              className="flex items-center gap-1 rounded border border-emperia-border/70 px-2 py-1 text-[10px]
+                         font-medium text-emperia-muted transition-colors hover:bg-emperia-hover hover:text-emperia-text"
+              title="Copy item definition"
+            >
+              <Copy className="h-3 w-3" />
+              Copy
+            </button>
+            <button
+              type="button"
+              onClick={handlePasteItemDefinition}
+              disabled={!hasCopiedItemDefinition}
+              className={`flex items-center gap-1 rounded border border-emperia-border/70 px-2 py-1 text-[10px] font-medium transition-colors ${
+                hasCopiedItemDefinition
+                  ? 'text-emperia-muted hover:bg-emperia-hover hover:text-emperia-text'
+                  : 'cursor-not-allowed text-emperia-muted/30'
+              }`}
+              title={hasCopiedItemDefinition ? 'Paste item definition' : 'No item definition copied'}
+            >
+              <ClipboardPaste className="h-3 w-3" />
+              Paste
+            </button>
+          </div>
         </div>
         <ServerPropertiesEditor mode="details" />
       </section>

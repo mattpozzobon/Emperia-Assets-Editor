@@ -1,4 +1,6 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { Check, ChevronDown, Search, X } from 'lucide-react';
 import { useOBStore } from '../store';
 import type { ItemProperties, ExclusiveSlotDef, ItemDefinition, ObjectData } from '../lib/types';
 import { ITEM_SLOT_TYPES } from '../lib/item-slot-types';
@@ -7,7 +9,7 @@ import {
   EXCLUSIVE_SLOT_TYPES,
   hasEquipmentClassification,
   isLimitedUseItemCategory,
-  ITEM_CATEGORY_OPTIONS,
+  ITEM_CATEGORY_GROUPS,
   ITEM_FIELD_TYPES,
   normalizeItemPropertiesForEditor,
   readItemProperty,
@@ -22,7 +24,7 @@ import type { HelpContent } from './HelpTooltip';
 interface FieldDef {
   key: string;
   label: string;
-  type: 'string' | 'number' | 'select' | 'slot-select' | 'boolean' | 'identity-buttons';
+  type: 'string' | 'number' | 'select' | 'slot-select' | 'category-picker' | 'boolean' | 'identity-buttons';
   options?: string[];
   placeholder?: string;
   help?: string;
@@ -276,7 +278,7 @@ const DECAY_FIELDS: FieldDef[] = [
 ];
 
 const SPECIAL_FIELDS: FieldDef[] = [
-  { key: 'itemType', label: 'Item Category', type: 'select', options: [...ITEM_CATEGORY_OPTIONS] },
+  { key: 'itemType', label: 'Item Category', type: 'category-picker' },
   { key: 'fluidSource', label: 'Fluid Source', type: 'select', options: [...FLUID_SOURCE_OPTIONS], help: FIELD_HELP.fluidSource },
   { key: 'field', label: 'Field', type: 'select', options: [...ITEM_FIELD_TYPES] },
 ];
@@ -1039,6 +1041,16 @@ function FieldRow({
     );
   }
 
+  if (type === 'category-picker') {
+    return (
+      <ItemCategoryPicker
+        labelNode={labelNode}
+        value={typeof value === 'string' ? value : ''}
+        onChange={(next) => onChange(next || undefined)}
+      />
+    );
+  }
+
   if (type === 'select') {
     return (
       <div className="flex items-center gap-2">
@@ -1091,6 +1103,178 @@ function FieldRow({
         className="flex-1 bg-emperia-bg border border-emperia-border rounded px-2 py-0.5 text-emperia-text text-xs w-0"
       />
     </div>
+  );
+}
+
+function ItemCategoryPicker({
+  labelNode,
+  value,
+  onChange,
+}: {
+  labelNode: ReactNode;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const selectedGroup = ITEM_CATEGORY_GROUPS.find((group) =>
+    group.options.some((option) => option.value === value));
+  const selected = selectedGroup?.options.find((option) => option.value === value);
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleGroups = ITEM_CATEGORY_GROUPS.map((group) => ({
+    ...group,
+    options: group.options.filter((option) => !normalizedQuery
+      || group.label.toLowerCase().includes(normalizedQuery)
+      || option.label.toLowerCase().includes(normalizedQuery)
+      || option.description.toLowerCase().includes(normalizedQuery)),
+  })).filter((group) => group.options.length > 0);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [open]);
+
+  const select = (next: string) => {
+    onChange(next);
+    setOpen(false);
+    setQuery('');
+  };
+
+  return (
+    <>
+      <div className="flex items-center gap-2">
+        {labelNode}
+        <button
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onClick={() => setOpen(true)}
+          className="flex min-w-0 flex-1 items-center justify-between rounded border border-emperia-border
+                     bg-emperia-bg px-2 py-1 text-left text-xs text-emperia-text transition-colors
+                     hover:border-emperia-text/40 hover:bg-emperia-hover"
+        >
+          <span className="min-w-0 truncate">
+            {selected ? `${selectedGroup?.label} / ${selected.label}` : 'Choose a category'}
+          </span>
+          <ChevronDown className="ml-2 h-3 w-3 shrink-0 text-emperia-muted" />
+        </button>
+      </div>
+      {open && createPortal(
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setOpen(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="item-category-title"
+            className="flex max-h-[80vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border
+                       border-emperia-border bg-emperia-surface shadow-2xl"
+          >
+            <div className="flex items-center gap-3 border-b border-emperia-border px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <h2 id="item-category-title" className="text-sm font-semibold text-emperia-text">
+                  Choose Item Category
+                </h2>
+                <p className="mt-0.5 text-[10px] text-emperia-muted">
+                  Categories organize items in the market and related editor views.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="rounded p-1 text-emperia-muted hover:bg-emperia-hover hover:text-emperia-text"
+                aria-label="Close category picker"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="border-b border-emperia-border p-3">
+              <label className="flex items-center gap-2 rounded border border-emperia-border bg-emperia-bg px-2.5 py-2">
+                <Search className="h-3.5 w-3.5 text-emperia-muted" />
+                <input
+                  autoFocus
+                  type="text"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search categories..."
+                  className="min-w-0 flex-1 border-0 bg-transparent text-xs text-emperia-text outline-none"
+                />
+              </label>
+            </div>
+            <div className="overflow-y-auto p-3">
+              {!normalizedQuery && (
+                <button
+                  type="button"
+                  onClick={() => select('')}
+                  className={`mb-3 flex w-full items-center justify-between rounded border px-3 py-2 text-left transition-colors ${
+                    !value
+                      ? 'border-emperia-accent bg-emperia-accent/10 text-emperia-accent'
+                      : 'border-emperia-border bg-emperia-bg text-emperia-muted hover:bg-emperia-hover hover:text-emperia-text'
+                  }`}
+                >
+                  <span>
+                    <span className="block text-xs font-medium">Uncategorized</span>
+                    <span className="block text-[9px] opacity-70">No market category assigned</span>
+                  </span>
+                  {!value && <Check className="h-4 w-4" />}
+                </button>
+              )}
+              <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {visibleGroups.map((group) => (
+                  <section
+                    key={group.key}
+                    className="overflow-hidden rounded-md border border-emperia-border bg-emperia-bg/40"
+                  >
+                    <div className="border-b border-emperia-border bg-emperia-surface px-3 py-2.5">
+                      <h3 className="text-[10px] font-semibold uppercase tracking-wider text-emperia-text">
+                        {group.label}
+                      </h3>
+                      <p className="text-[9px] text-emperia-muted">{group.description}</p>
+                    </div>
+                    <div className="space-y-1.5 p-2">
+                      {group.options.map((option) => {
+                        const active = value === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => select(option.value)}
+                            className={`flex min-w-0 items-center justify-between rounded border px-3 py-2 text-left transition-colors ${
+                              active
+                                ? 'border-emperia-accent bg-emperia-accent/10 text-emperia-accent'
+                                : 'border-emperia-border bg-emperia-bg text-emperia-text hover:border-emperia-text/30 hover:bg-emperia-hover'
+                            }`}
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-xs font-medium">{option.label}</span>
+                              <span className="block truncate text-[9px] text-emperia-muted">{option.description}</span>
+                            </span>
+                            {active && <Check className="ml-2 h-4 w-4 shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
+                {visibleGroups.length === 0 && (
+                  <div className="py-8 text-center text-xs text-emperia-muted sm:col-span-2 lg:col-span-4">
+                    No matching categories
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
 

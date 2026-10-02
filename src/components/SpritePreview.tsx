@@ -863,7 +863,6 @@ export function SpritePreview() {
       editVersion: store.editVersion + 1,
       currentFrame: 0,
       playing: false,
-      activeLayer: 0,
       selectedSlots: [],
       activeGroup: 1,
     });
@@ -1247,7 +1246,7 @@ export function SpritePreview() {
       {/* Frame group selector */}
       {(thing.frameGroups.length > 1 || isDirectionalAppearance) && (
         <div className="flex items-center justify-center px-4 py-1.5 gap-1 border-t border-emperia-border">
-          {thing.frameGroups.map((_, i) => (
+          {thing.frameGroups.map((frameGroup, i) => (
             <button
               key={i}
               onClick={() => {
@@ -1255,7 +1254,7 @@ export function SpritePreview() {
                   activeGroup: i,
                   currentFrame: 0,
                   playing: false,
-                  activeLayer: 0,
+                  activeLayer: Math.min(activeLayer, frameGroup.layers - 1),
                 });
                 setActiveZ(0);
               }}

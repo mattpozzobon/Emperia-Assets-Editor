@@ -19,16 +19,27 @@ const MAX_GROUP_DIM = 8;
 const CELL = 40;
 const ATLAS_COLS = 6;
 const MAX_DIRECTIONAL_FRAME_COUNT = 255;
+const MAX_DIRECTIONAL_LAYER_COUNT = 255;
 const DIRECTION_LABELS = ['North', 'East', 'South', 'West'] as const;
+
+type SheetColumnAssignment = {
+  direction: number;
+  layer: number;
+} | null;
 
 type SheetRowAssignment = {
   kind: 'idle' | 'moving';
   frame: number;
 } | null;
 
-const defaultColumnDirections = (columnCount: number): Array<number | null> => (
-  Array.from({ length: columnCount }, (_, column) => (column < 4 ? column : null))
-);
+const defaultColumnAssignments = (
+  columnCount: number,
+  layers: number,
+): SheetColumnAssignment[] => Array.from({ length: columnCount }, (_, column) => {
+  const direction = Math.floor(column / layers);
+  if (direction >= DIRECTION_LABELS.length) return null;
+  return { direction, layer: column % layers };
+});
 
 const defaultRowAssignments = (
   rowCount: number,
@@ -73,9 +84,15 @@ export function ThingSpriteGrid() {
   const [showFullSheetConfig, setShowFullSheetConfig] = useState(false);
   const [fullSheetIdleFrames, setFullSheetIdleFrames] = useState(1);
   const [fullSheetMovingFrames, setFullSheetMovingFrames] = useState(2);
+  const [fullSheetLayers, setFullSheetLayers] = useState(1);
   const [fullSheetSpriteSize, setFullSheetSpriteSize] = useState<32 | 64>(64);
   const [fullSheetPreview, setFullSheetPreview] = useState<FullSheetPreview | null>(null);
-  const [fullSheetColumnDirections, setFullSheetColumnDirections] = useState<Array<number | null>>([0, 1, 2, 3]);
+  const [fullSheetColumnAssignments, setFullSheetColumnAssignments] = useState<SheetColumnAssignment[]>([
+    { direction: 0, layer: 0 },
+    { direction: 1, layer: 0 },
+    { direction: 2, layer: 0 },
+    { direction: 3, layer: 0 },
+  ]);
   const [fullSheetRowAssignments, setFullSheetRowAssignments] = useState<SheetRowAssignment[]>([
     { kind: 'idle', frame: 0 },
     { kind: 'moving', frame: 0 },
@@ -115,8 +132,8 @@ export function ThingSpriteGrid() {
   }, [fullSheetPreview?.url]);
 
   useEffect(() => {
-    setFullSheetColumnDirections(defaultColumnDirections(fullSheetSourceColumnCount));
-  }, [fullSheetSourceColumnCount]);
+    setFullSheetColumnAssignments(defaultColumnAssignments(fullSheetSourceColumnCount, fullSheetLayers));
+  }, [fullSheetSourceColumnCount, fullSheetLayers]);
 
   useEffect(() => {
     setFullSheetRowAssignments(defaultRowAssignments(
@@ -126,9 +143,12 @@ export function ThingSpriteGrid() {
     ));
   }, [fullSheetSourceRowCount, fullSheetIdleFrames, fullSheetMovingFrames]);
 
-  const directionSourceColumns = useMemo(() => (
-    DIRECTION_LABELS.map((_, direction) => fullSheetColumnDirections.indexOf(direction))
-  ), [fullSheetColumnDirections]);
+  const sourceColumnsByLayer = useMemo(() => Array.from(
+    { length: fullSheetLayers },
+    (_, layer) => DIRECTION_LABELS.map((_, direction) => fullSheetColumnAssignments.findIndex(
+      (assignment) => assignment?.direction === direction && assignment.layer === layer,
+    )),
+  ), [fullSheetColumnAssignments, fullSheetLayers]);
   const idleSourceRows = useMemo(() => Array.from(
     { length: fullSheetIdleFrames },
     (_, frame) => fullSheetRowAssignments.findIndex((assignment) => (
@@ -150,7 +170,7 @@ export function ThingSpriteGrid() {
     image.onload = () => {
       const rowCount = fullSheetIdleFrames + fullSheetMovingFrames;
       const detectedSize = ([32, 64] as const).find((size) => (
-        image.naturalWidth === size * 4 && image.naturalHeight === size * rowCount
+        image.naturalWidth === size * 4 * fullSheetLayers && image.naturalHeight === size * rowCount
       ));
       if (detectedSize) setFullSheetSpriteSize(detectedSize);
       setFullSheetPreview({
@@ -166,7 +186,7 @@ export function ThingSpriteGrid() {
       alert('Could not load the selected image.');
     };
     image.src = url;
-  }, [fullSheetIdleFrames, fullSheetMovingFrames]);
+  }, [fullSheetIdleFrames, fullSheetMovingFrames, fullSheetLayers]);
 
   const handleFullSheetImport = useCallback(async (file: File | null) => {
     if (!file) return;
@@ -183,8 +203,9 @@ export function ThingSpriteGrid() {
         addSprite: store.addSprite,
         idleFrames: fullSheetIdleFrames,
         movingFrames: fullSheetMovingFrames,
+        layers: fullSheetLayers,
         spriteSize: fullSheetSpriteSize,
-        directionSourceColumns,
+        sourceColumnsByLayer,
         idleSourceRows,
         movingSourceRows,
       });
@@ -206,7 +227,7 @@ export function ThingSpriteGrid() {
       alert(
         `${categoryLabel(thing.category)} imported: ${fullSheetSpriteSize}x${fullSheetSpriteSize}px, `
         + `${result.idleFrames} Idle frame(s), `
-        + `${result.movingFrames} Moving frame(s), 4 directions.`,
+        + `${result.movingFrames} Moving frame(s), ${result.layers} layer(s), 4 directions.`,
       );
     } catch (error) {
       alert(`Could not import complete sheet: ${error instanceof Error ? error.message : String(error)}`);
@@ -216,8 +237,9 @@ export function ThingSpriteGrid() {
     spriteData,
     fullSheetIdleFrames,
     fullSheetMovingFrames,
+    fullSheetLayers,
     fullSheetSpriteSize,
-    directionSourceColumns,
+    sourceColumnsByLayer,
     idleSourceRows,
     movingSourceRows,
   ]);
@@ -576,27 +598,35 @@ export function ThingSpriteGrid() {
   }, []);
 
   const fullSheetRowCount = fullSheetIdleFrames + fullSheetMovingFrames;
-  const expectedFullSheetWidth = fullSheetSpriteSize * 4;
+  const expectedFullSheetWidth = fullSheetSpriteSize * 4 * fullSheetLayers;
   const expectedFullSheetHeight = fullSheetRowCount * fullSheetSpriteSize;
   const fullSheetMappingValid = Boolean(
     fullSheetPreview
-    && fullSheetSourceColumnCount >= 4
+    && fullSheetSourceColumnCount >= 4 * fullSheetLayers
     && fullSheetSourceRowCount >= fullSheetRowCount
-    && directionSourceColumns.every((column) => column >= 0)
+    && sourceColumnsByLayer.every((columns) => columns.every((column) => column >= 0))
     && idleSourceRows.every((row) => row >= 0)
     && movingSourceRows.every((row) => row >= 0),
   );
 
   const assignSourceColumn = (sourceColumn: number, value: string) => {
-    const direction = value === '' ? null : Number(value);
-    setFullSheetColumnDirections((previous) => {
+    const assignment: SheetColumnAssignment = value === ''
+      ? null
+      : (() => {
+          const [directionText, layerText] = value.split(':');
+          return { direction: Number(directionText), layer: Number(layerText) };
+        })();
+    setFullSheetColumnAssignments((previous) => {
       const next = [...previous];
-      if (direction != null) {
+      if (assignment) {
         for (let column = 0; column < next.length; column++) {
-          if (next[column] === direction) next[column] = null;
+          const current = next[column];
+          if (current?.direction === assignment.direction && current.layer === assignment.layer) {
+            next[column] = null;
+          }
         }
       }
-      next[sourceColumn] = direction;
+      next[sourceColumn] = assignment;
       return next;
     });
   };
@@ -691,13 +721,13 @@ export function ThingSpriteGrid() {
               <span>Sprite Sheet</span>
             </button>
             {showFullSheetConfig && thing && supportsFullSheetImport(thing.category) && (
-              <div className="absolute left-0 top-full z-50 mt-1 w-56 rounded border border-emperia-border bg-emperia-surface p-2.5 shadow-xl">
+              <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded border border-emperia-border bg-emperia-surface p-2.5 shadow-xl">
                 <div className="mb-2 flex items-center justify-between">
                   <div>
                     <p className="text-[11px] font-semibold text-emperia-text">
                       Import {categoryLabel(thing.category)}
                     </p>
-                    <p className="text-[9px] text-emperia-muted">4 directions</p>
+                    <p className="text-[9px] text-emperia-muted">4 directions · {fullSheetLayers} layer(s)</p>
                   </div>
                   <button
                     onClick={() => setShowFullSheetConfig(false)}
@@ -725,7 +755,7 @@ export function ThingSpriteGrid() {
                     ))}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <label className="text-[9px] text-emperia-muted">
                     Idle frames
                     <input
@@ -750,6 +780,20 @@ export function ThingSpriteGrid() {
                       onChange={(event) => setFullSheetMovingFrames(Math.max(
                         1,
                         Math.min(MAX_DIRECTIONAL_FRAME_COUNT, parseInt(event.target.value, 10) || 1),
+                      ))}
+                      className="mt-0.5 w-full rounded border border-emperia-border bg-emperia-bg px-1.5 py-1 text-[11px] text-emperia-text outline-none focus:border-emperia-accent"
+                    />
+                  </label>
+                  <label className="text-[9px] text-emperia-muted">
+                    Layers
+                    <input
+                      type="number"
+                      min={1}
+                      max={MAX_DIRECTIONAL_LAYER_COUNT}
+                      value={fullSheetLayers}
+                      onChange={(event) => setFullSheetLayers(Math.max(
+                        1,
+                        Math.min(MAX_DIRECTIONAL_LAYER_COUNT, parseInt(event.target.value, 10) || 1),
                       ))}
                       className="mt-0.5 w-full rounded border border-emperia-border bg-emperia-bg px-1.5 py-1 text-[11px] text-emperia-text outline-none focus:border-emperia-accent"
                     />
@@ -963,7 +1007,7 @@ export function ThingSpriteGrid() {
                 Confirm {categoryLabel(thing?.category)} sheet mapping
               </h3>
               <p className="mt-0.5 text-[10px] text-emperia-muted">
-                Check where every direction and animation row will be imported from.
+                Check where every direction, layer, and animation row will be imported from.
               </p>
             </div>
             <button
@@ -1020,6 +1064,20 @@ export function ThingSpriteGrid() {
                 className="w-14 rounded border border-emperia-border bg-emperia-surface px-1.5 py-1 text-center text-[11px] text-emperia-text outline-none focus:border-emperia-accent"
               />
             </label>
+            <label className="flex items-center gap-1.5 text-[10px] text-emperia-muted">
+              Layers
+              <input
+                type="number"
+                min={1}
+                max={MAX_DIRECTIONAL_LAYER_COUNT}
+                value={fullSheetLayers}
+                onChange={(event) => setFullSheetLayers(Math.max(
+                  1,
+                  Math.min(MAX_DIRECTIONAL_LAYER_COUNT, parseInt(event.target.value, 10) || 1),
+                ))}
+                className="w-14 rounded border border-emperia-border bg-emperia-surface px-1.5 py-1 text-center text-[11px] text-emperia-text outline-none focus:border-emperia-accent"
+              />
+            </label>
             <span className={`ml-auto text-[10px] font-medium ${fullSheetMappingValid ? 'text-green-400' : 'text-red-400'}`}>
               Image {fullSheetPreview.width}x{fullSheetPreview.height}px ·{' '}
               {fullSheetSourceColumnCount > 0 && fullSheetSourceRowCount > 0
@@ -1039,21 +1097,29 @@ export function ThingSpriteGrid() {
                   style={{ gridTemplateColumns: `96px repeat(${fullSheetSourceColumnCount}, minmax(96px, 1fr))` }}
                 >
                   <div />
-                  {Array.from({ length: fullSheetSourceColumnCount }, (_, column) => (
-                    <label key={column} className="px-1 py-1 text-center text-[9px] text-emperia-muted">
-                      Column {column + 1}
-                      <select
-                        value={fullSheetColumnDirections[column] ?? ''}
-                        onChange={(event) => assignSourceColumn(column, event.target.value)}
-                        className="mt-1 w-full rounded border border-emperia-border bg-emperia-surface px-1 py-1 text-[10px] font-semibold text-emperia-text outline-none focus:border-emperia-accent"
-                      >
-                        <option value="">Ignore</option>
-                        {DIRECTION_LABELS.map((direction, directionIndex) => (
-                          <option key={direction} value={directionIndex}>{direction}</option>
-                        ))}
-                      </select>
-                    </label>
-                  ))}
+                  {Array.from({ length: fullSheetSourceColumnCount }, (_, column) => {
+                    const assignment = fullSheetColumnAssignments[column];
+                    const value = assignment ? `${assignment.direction}:${assignment.layer}` : '';
+                    return (
+                      <label key={column} className="px-1 py-1 text-center text-[9px] text-emperia-muted">
+                        Column {column + 1}
+                        <select
+                          value={value}
+                          onChange={(event) => assignSourceColumn(column, event.target.value)}
+                          className="mt-1 w-full rounded border border-emperia-border bg-emperia-surface px-1 py-1 text-[10px] font-semibold text-emperia-text outline-none focus:border-emperia-accent"
+                        >
+                          <option value="">Ignore</option>
+                          {DIRECTION_LABELS.flatMap((direction, directionIndex) => (
+                            Array.from({ length: fullSheetLayers }, (_, layer) => (
+                              <option key={`${direction}-${layer}`} value={`${directionIndex}:${layer}`}>
+                                {fullSheetLayers === 1 ? direction : `${direction} · L${layer + 1}`}
+                              </option>
+                            ))
+                          ))}
+                        </select>
+                      </label>
+                    );
+                  })}
                 </div>
                 <div className="flex items-stretch">
                   <div
@@ -1114,13 +1180,13 @@ export function ThingSpriteGrid() {
                         const row = Math.floor(index / fullSheetSourceColumnCount);
                         const column = index % fullSheetSourceColumnCount;
                         const assignment = fullSheetRowAssignments[row];
-                        const directionIndex = fullSheetColumnDirections[column];
-                        const active = assignment != null && directionIndex != null;
+                        const columnAssignment = fullSheetColumnAssignments[column];
+                        const active = assignment != null && columnAssignment != null;
                         const rowLabel = assignment
                           ? `${assignment.kind === 'idle' ? 'Idle' : 'Moving'} ${assignment.frame + 1}`
                           : 'Ignored row';
-                        const columnLabel = directionIndex != null
-                          ? DIRECTION_LABELS[directionIndex]
+                        const columnLabel = columnAssignment
+                          ? `${DIRECTION_LABELS[columnAssignment.direction]}, Layer ${columnAssignment.layer + 1}`
                           : 'ignored column';
                         return (
                           <div
@@ -1163,7 +1229,7 @@ export function ThingSpriteGrid() {
               onClick={() => void handleFullSheetImport(fullSheetPreview.file)}
               disabled={!fullSheetMappingValid}
               className="rounded bg-emperia-accent px-3 py-1.5 text-[10px] font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-35"
-              title={fullSheetMappingValid ? 'Import this mapped sprite sheet' : 'Assign all four directions and every configured frame'}
+              title={fullSheetMappingValid ? 'Import this mapped sprite sheet' : 'Assign every configured direction, layer, and frame'}
             >
               Import mapped sheet
             </button>

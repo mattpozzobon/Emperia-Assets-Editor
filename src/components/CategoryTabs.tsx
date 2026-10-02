@@ -27,7 +27,7 @@ export function CategoryTabs() {
   const selectedThingId = useOBStore((s) => s.selectedThingId);
   const addThing = useOBStore((s) => s.addThing);
   const removeThing = useOBStore((s) => s.removeThing);
-  const clearThing = useOBStore((s) => s.clearThing);
+  const clearThings = useOBStore((s) => s.clearThings);
   const getCategoryRange = useOBStore((s) => s.getCategoryRange);
   const filterGroup = useOBStore((s) => s.filterGroup);
   const setFilterGroup = useOBStore((s) => s.setFilterGroup);
@@ -162,14 +162,21 @@ export function CategoryTabs() {
             <button
               onClick={() => {
                 if (!selectedThingId || !objectData) return;
-                const dId = getDisplayId(objectData, selectedThingId);
-                if (confirm(`Clear ${activeCategory} #${dId}? This will strip all sprites and properties but keep the slot.`)) {
-                  clearThing(selectedThingId);
+                const selectedIds = selectedThingIds.size > 0
+                  ? Array.from(selectedThingIds)
+                  : [selectedThingId];
+                if (selectedIds.length === 1) {
+                  const dId = getDisplayId(objectData, selectedIds[0]);
+                  if (confirm(`Clear ${activeCategory} #${dId}? This will strip all sprites, properties, and flags but keep the slot.`)) {
+                    clearThings(selectedIds);
+                  }
+                } else if (confirm(`Clear ${selectedIds.length} selected ${activeCategory} slots? This will strip all sprites, properties, and flags but keep the slots.`)) {
+                  clearThings(selectedIds);
                 }
               }}
               disabled={!objectData || !selectedThingId}
               className="p-1 rounded bg-emperia-surface border border-emperia-border text-emperia-muted hover:text-red-400 hover:border-red-400/50 disabled:opacity-30 transition-colors"
-              title={`Clear selected ${activeCategory} (keep slot)`}
+              title={`Clear selected ${activeCategory}${selCount > 1 ? ` slots (${selCount})` : ''} (keep slots)`}
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>

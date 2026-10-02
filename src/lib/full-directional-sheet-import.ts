@@ -3,6 +3,7 @@ import type { FrameGroup, ThingType } from './types';
 export interface FullDirectionalSheetImportResult {
   idleFrames: number;
   movingFrames: number;
+  layers: number;
 }
 
 interface FullDirectionalSheetImportOptions {
@@ -11,9 +12,10 @@ interface FullDirectionalSheetImportOptions {
   addSprite: (imageData: ImageData) => number | null;
   idleFrames: number;
   movingFrames: number;
+  layers: number;
   spriteSize: 32 | 64;
-  /** Source column for each target direction: North, East, South, West. */
-  directionSourceColumns: readonly number[];
+  /** Source column for each target layer and direction: [layer][North, East, South, West]. */
+  sourceColumnsByLayer: readonly (readonly number[])[];
   /** Source row for each target Idle frame. */
   idleSourceRows: readonly number[];
   /** Source row for each target Moving frame. */
@@ -28,11 +30,12 @@ const getSpriteIndex = (
   group: FrameGroup,
   frame: number,
   direction: number,
+  layer: number,
   tx: number,
   ty: number,
 ): number => (
   ((((((frame * group.patternZ) * group.patternY) * group.patternX + direction)
-    * group.layers) * group.height + ty) * group.width + tx)
+    * group.layers + layer) * group.height + ty) * group.width + tx)
 );
 
 const loadImage = (file: File): Promise<HTMLImageElement> => new Promise((resolve, reject) => {
@@ -55,8 +58,9 @@ export async function importFullDirectionalSheet({
   addSprite,
   idleFrames,
   movingFrames,
+  layers,
   spriteSize,
-  directionSourceColumns,
+  sourceColumnsByLayer,
   idleSourceRows,
   movingSourceRows,
 }: FullDirectionalSheetImportOptions): Promise<FullDirectionalSheetImportResult> {
@@ -67,12 +71,15 @@ export async function importFullDirectionalSheet({
   if (
     !Number.isInteger(idleFrames)
     || !Number.isInteger(movingFrames)
+    || !Number.isInteger(layers)
     || idleFrames < 1
     || movingFrames < 1
+    || layers < 1
     || idleFrames > MAX_FRAME_COUNT
     || movingFrames > MAX_FRAME_COUNT
+    || layers > MAX_FRAME_COUNT
   ) {
-    throw new Error(`Idle and Moving frame counts must each be between 1 and ${MAX_FRAME_COUNT}.`);
+    throw new Error(`Idle frames, Moving frames, and Layers must each be between 1 and ${MAX_FRAME_COUNT}.`);
   }
   if (spriteSize !== 32 && spriteSize !== 64) {
     throw new Error('Sprite size must be either 32x32 or 64x64 pixels.');
@@ -105,7 +112,16 @@ export async function importFullDirectionalSheet({
       throw new Error(`${label} mapping is incomplete or contains a duplicate source.`);
     }
   };
-  validateMapping('Direction', directionSourceColumns, DIRECTION_COLUMNS, sourceColumnCount);
+  if (sourceColumnsByLayer.length !== layers) {
+    throw new Error('Layer column mapping is incomplete.');
+  }
+  for (let layer = 0; layer < layers; layer++) {
+    validateMapping(`Layer ${layer + 1} direction`, sourceColumnsByLayer[layer], DIRECTION_COLUMNS, sourceColumnCount);
+  }
+  const mappedSourceColumns = sourceColumnsByLayer.flatMap((columns) => [...columns]);
+  if (new Set(mappedSourceColumns).size !== layers * DIRECTION_COLUMNS) {
+    throw new Error('Each source column can only be assigned to one direction and layer.');
+  }
   validateMapping('Idle row', idleSourceRows, idleFrames, sourceRowCount);
   validateMapping('Moving row', movingSourceRows, movingFrames, sourceRowCount);
   if (new Set([...idleSourceRows, ...movingSourceRows]).size !== idleFrames + movingFrames) {
@@ -119,7 +135,7 @@ export async function importFullDirectionalSheet({
   idle.width = spriteTiles;
   idle.height = spriteTiles;
   idle.exactSizeHint = spriteTiles;
-  idle.layers = 1;
+  idle.layers = layers;
   idle.patternX = DIRECTION_COLUMNS;
   idle.patternY = 1;
   idle.patternZ = 1;
@@ -159,7 +175,7 @@ export async function importFullDirectionalSheet({
   moving.width = spriteTiles;
   moving.height = spriteTiles;
   moving.exactSizeHint = spriteTiles;
-  moving.layers = 1;
+  moving.layers = layers;
   moving.patternX = DIRECTION_COLUMNS;
   moving.patternY = 1;
   moving.patternZ = 1;
@@ -186,7 +202,7 @@ export async function importFullDirectionalSheet({
   const tileCanvas = document.createElement('canvas');
   tileCanvas.width = 32;
   tileCanvas.height = 32;
-  const tileContext = tileCanvas.getContext('2d')!;
+  const tileContext = tileCanvas.getContext('2d', { willReadFrequently: true })!;
 
   const assignSprite = (targetGroup: FrameGroup, index: number, imageData: ImageData) => {
     // A complete-sheet import must give every slot an independent sprite.
@@ -200,6 +216,7 @@ export async function importFullDirectionalSheet({
     targetGroup: FrameGroup,
     frame: number,
     targetDirection: number,
+    targetLayer: number,
     sourceColumn: number,
     sourceRow: number,
   ) => {
@@ -220,33 +237,37 @@ export async function importFullDirectionalSheet({
         const tileData = tileContext.getImageData(0, 0, 32, 32);
         const tx = targetGroup.width - 1 - visualColumn;
         const ty = targetGroup.height - 1 - visualRow;
-        const index = getSpriteIndex(targetGroup, frame, targetDirection, tx, ty);
+        const index = getSpriteIndex(targetGroup, frame, targetDirection, targetLayer, tx, ty);
         if (index < targetGroup.sprites.length) assignSprite(targetGroup, index, tileData);
       }
     }
   };
 
-  for (let direction = 0; direction < DIRECTION_COLUMNS; direction++) {
-    for (let frame = 0; frame < idleFrames; frame++) {
-      importFrame(
-        idle,
-        frame,
-        direction,
-        directionSourceColumns[direction],
-        idleSourceRows[frame],
-      );
-    }
-    for (let frame = 0; frame < movingFrames; frame++) {
-      importFrame(
-        moving,
-        frame,
-        direction,
-        directionSourceColumns[direction],
-        movingSourceRows[frame],
-      );
+  for (let layer = 0; layer < layers; layer++) {
+    for (let direction = 0; direction < DIRECTION_COLUMNS; direction++) {
+      for (let frame = 0; frame < idleFrames; frame++) {
+        importFrame(
+          idle,
+          frame,
+          direction,
+          layer,
+          sourceColumnsByLayer[layer][direction],
+          idleSourceRows[frame],
+        );
+      }
+      for (let frame = 0; frame < movingFrames; frame++) {
+        importFrame(
+          moving,
+          frame,
+          direction,
+          layer,
+          sourceColumnsByLayer[layer][direction],
+          movingSourceRows[frame],
+        );
+      }
     }
   }
 
   thing.rawBytes = undefined;
-  return { idleFrames, movingFrames };
+  return { idleFrames, movingFrames, layers };
 }

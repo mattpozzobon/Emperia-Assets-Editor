@@ -9,6 +9,15 @@ html, body, #root {
   overflow: hidden;
 }
 
+/* Text fields keep DOM focus for typing, selection, and native clipboard
+   shortcuts without showing a persistent mouse-focus treatment. */
+input:not([type='checkbox']):focus,
+textarea:focus {
+  border-color: #272727 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
 /* Compact number fields use their own +/- controls. Hiding the browser's
    built-in spinner leaves enough room for every digit in narrow panels. */
 .number-input-compact {

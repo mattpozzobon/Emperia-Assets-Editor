@@ -153,6 +153,7 @@ export interface OBState {
   addThing: (cat: ThingCategory) => number | null;
   removeThing: (id: number) => void;
   clearThing: (id: number) => void;
+  clearThings: (ids: Iterable<number>) => void;
   importThing: (cat: ThingCategory, flags: ThingFlags, frameGroups: FrameGroup[], spritePixels: Map<number, ImageData>) => number | null;
   replaceThing: (targetId: number, flags: ThingFlags, frameGroups: FrameGroup[], spritePixels: Map<number, ImageData>) => boolean;
   undo: () => void;
