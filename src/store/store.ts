@@ -469,6 +469,74 @@ export const useOBStore = create<OBState>((set, get) => ({
     });
   },
 
+  removeItemAlias: (itemId) => {
+    const {
+      objectData,
+      itemDefinitions,
+      itemLocalizations,
+      definitionsLoaded,
+      editVersion,
+    } = get();
+    if (!objectData || !definitionsLoaded) return false;
+
+    const appearanceId = objectData.itemAppearances.get(itemId)
+      ?? itemDefinitions.get(itemId)?.appearanceId;
+    if (appearanceId == null) return false;
+
+    const linkedItemIds = new Set<number>();
+    for (const [candidateItemId, candidateAppearanceId] of objectData.itemAppearances) {
+      if (candidateAppearanceId === appearanceId) linkedItemIds.add(candidateItemId);
+    }
+    for (const [candidateItemId, definition] of itemDefinitions) {
+      if (definition.appearanceId === appearanceId) linkedItemIds.add(candidateItemId);
+    }
+    // This operation is alias-only. Keep at least one public ID attached to
+    // the appearance so removing an alias can never delete the shared visual.
+    if (linkedItemIds.size <= 1 || !linkedItemIds.has(itemId)) return false;
+
+    const newDefinitions = new Map(itemDefinitions);
+    newDefinitions.delete(itemId);
+
+    const itemAppearances = new Map(objectData.itemAppearances);
+    const itemSlotTypes = new Map(objectData.itemSlotTypes);
+    const itemIdentities = new Map(objectData.itemIdentities);
+    const itemSeatDefinitions = new Map(objectData.itemSeatDefinitions);
+    const equipmentAppearances = new Map(objectData.equipmentAppearances);
+    itemAppearances.delete(itemId);
+    itemSlotTypes.delete(itemId);
+    itemIdentities.delete(itemId);
+    itemSeatDefinitions.delete(itemId);
+    equipmentAppearances.delete(itemId);
+
+    const newAppearanceMap = new Map<number, number>();
+    for (const definition of newDefinitions.values()) {
+      registerPrimaryItemForAppearance(newAppearanceMap, newDefinitions, definition);
+    }
+
+    const newLocalizations = emptyItemLocalizations();
+    for (const locale of ITEM_LOCALES) {
+      newLocalizations[locale] = new Map(itemLocalizations[locale]);
+      newLocalizations[locale].delete(itemId);
+    }
+
+    set({
+      objectData: {
+        ...objectData,
+        itemAppearances,
+        itemSlotTypes,
+        itemIdentities,
+        itemSeatDefinitions,
+        equipmentAppearances,
+      },
+      itemDefinitions: newDefinitions,
+      appearanceToItemIds: newAppearanceMap,
+      itemLocalizations: newLocalizations,
+      dirty: true,
+      editVersion: editVersion + 1,
+    });
+    return true;
+  },
+
   updateItemLocalization: (itemId, locale, text) => {
     if (locale === 'en') return;
     const { itemLocalizations, editVersion } = get();

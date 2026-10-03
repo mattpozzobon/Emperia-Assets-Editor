@@ -8,6 +8,7 @@
     "dev:ui": "vite",
     "build": "tsc -b && vite build",
     "validate:material-mask": "tsx scripts/validate-material-mask.ts",
+    "prototype:espr-v2": "node scripts/prototype-espr-v2.mjs",
     "publish:assets": "node scripts/publish-assets.mjs",
     "preview": "vite preview",
     "worker:types": "wrangler types worker/worker-configuration.d.ts",

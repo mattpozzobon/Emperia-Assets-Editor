@@ -53,6 +53,16 @@ export function ThingGrid() {
     for (const itemIds of links.values()) itemIds.sort((left, right) => left - right);
     return links;
   }, [objectData]);
+  const itemLinksByAppearance = useMemo(() => {
+    const links = new Map<number, number[]>();
+    for (const [itemId, appearanceId] of objectData?.itemAppearances ?? []) {
+      const itemIds = links.get(appearanceId) ?? [];
+      itemIds.push(itemId);
+      links.set(appearanceId, itemIds);
+    }
+    for (const itemIds of links.values()) itemIds.sort((left, right) => left - right);
+    return links;
+  }, [objectData]);
   const setSelectedHairId = useOBStore((s) => s.setSelectedHairId);
 
   const tooltip = useSpriteTooltip(spriteData, spriteOverrides);
@@ -296,6 +306,9 @@ export function ThingGrid() {
               : [];
             const equipmentIsLinked = linkedEquipmentItemIds.length > 0;
             const itemId = appearanceToItemIds?.get(thing.id);
+            const publicItemIds = thing.category === 'item'
+              ? itemLinksByAppearance.get(thing.id) ?? []
+              : [];
             const def = itemId != null ? itemDefinitions?.get(itemId) : undefined;
             const itemName = itemId != null
               ? itemLocalizations.en.get(itemId)?.name ?? def?.properties?.name
@@ -329,7 +342,10 @@ export function ThingGrid() {
               && enabledPoseDirections.length > 0
               && missingPoseDirections.length === 0,
             );
-            const baseTipText = itemName ? `#${publicId} — ${itemName}` : `#${publicId}`;
+            const aliasText = publicItemIds.length > 1
+              ? ` · Public IDs: ${publicItemIds.map((id) => `#${id}`).join(', ')}`
+              : '';
+            const baseTipText = `${itemName ? `#${publicId} — ${itemName}` : `#${publicId}`}${aliasText}`;
             const tipText = seatBinding
               ? `${baseTipText} · Pose: ${boundPoseSet?.name ?? `missing #${seatBinding.poseSetId}`}`
               : thing.category === 'equipment'
@@ -482,6 +498,14 @@ export function ThingGrid() {
                   >
                     {publicId}
                   </span>
+                  {publicItemIds.length > 1 && (
+                    <span
+                      title={`Also linked: ${publicItemIds.filter((id) => id !== publicId).map((id) => `#${id}`).join(', ')}`}
+                      className="rounded bg-amber-500/90 px-1 font-mono text-[7px] font-bold leading-3 text-black shadow-sm shadow-black"
+                    >
+                      +{publicItemIds.length - 1}
+                    </span>
+                  )}
                 </span>
               </div>
             );

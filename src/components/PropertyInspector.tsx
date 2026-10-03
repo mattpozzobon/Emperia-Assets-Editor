@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
-import { ChevronDown, ChevronRight, Copy, ClipboardPaste } from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, Copy, ClipboardPaste, Link2, Trash2 } from 'lucide-react';
 import { useOBStore } from '../store';
 import type { ItemProperties, ItemSeatDefinition, SeatDirection, ThingCategory, ThingFlags } from '../lib/types';
 import { ColorPalettePopover } from './ColorPalettePopover';
@@ -287,7 +287,9 @@ export function PropertyInspector() {
   const updateThingFlags = useOBStore((s) => s.updateThingFlags);
   const itemDefinitions = useOBStore((s) => s.itemDefinitions);
   const appearanceToItemIds = useOBStore((s) => s.appearanceToItemIds);
+  const itemLocalizations = useOBStore((s) => s.itemLocalizations);
   const updateItemDefinition = useOBStore((s) => s.updateItemDefinition);
+  const removeItemAlias = useOBStore((s) => s.removeItemAlias);
   const updateItemSeatDefinition = useOBStore((s) => s.updateItemSeatDefinition);
   // Subscribe to editVersion so edits cause re-render
   useOBStore((s) => s.editVersion);
@@ -304,6 +306,24 @@ export function PropertyInspector() {
   const seatDefinition = itemId != null
     ? objectData?.itemSeatDefinitions.get(itemId) ?? null
     : null;
+  const publicItemIds = useMemo(() => {
+    if (!thing || thing.category !== 'item' || !objectData) return [];
+    return Array.from(objectData.itemAppearances.entries())
+      .filter(([, appearanceId]) => appearanceId === thing.id)
+      .map(([publicItemId]) => publicItemId)
+      .sort((left, right) => left - right);
+  }, [objectData, thing]);
+
+  const handleRemoveAlias = useCallback((publicItemId: number) => {
+    if (!thing || publicItemIds.length <= 1) return;
+    const remainingIds = publicItemIds.filter((id) => id !== publicItemId);
+    const confirmed = window.confirm(
+      `Remove public item ID #${publicItemId} from appearance #${thing.id}?\n\n`
+      + `The shared visual will remain linked to ${remainingIds.map((id) => `#${id}`).join(', ')}. `
+      + 'The removed ID will also be deleted from items.json, localizations, and its item-specific links when you compile.',
+    );
+    if (confirmed) removeItemAlias(publicItemId);
+  }, [publicItemIds, removeItemAlias, thing]);
 
   const updateTextConfiguration = useCallback((
     mode: TextAccessMode,
@@ -446,6 +466,50 @@ export function PropertyInspector() {
 
   return (
     <div className="space-y-5 p-4 text-xs">
+      {thing.category === 'item' && publicItemIds.length > 1 && (
+        <section className="rounded-md border border-amber-500/30 bg-amber-950/10 p-3">
+          <div className="flex items-start gap-2">
+            <Link2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-300" />
+            <div className="min-w-0 flex-1">
+              <h3 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-200">
+                Public Item IDs
+              </h3>
+              <p className="mt-0.5 text-[9px] text-amber-100/50">
+                Appearance #{thing.id}{publicItemIds.length > 1
+                  ? ` is shared by ${publicItemIds.length} public IDs`
+                  : ' has one public ID'}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {publicItemIds.map((publicItemId) => {
+                  const isPrimary = publicItemId === itemId;
+                  const name = itemLocalizations.en.get(publicItemId)?.name;
+                  return (
+                    <span
+                      key={publicItemId}
+                      className="flex items-center gap-1 rounded border border-amber-500/25 bg-emperia-bg/60 px-2 py-1 font-mono text-[10px] text-emperia-text"
+                      title={name ? `#${publicItemId} — ${name}` : `Public item #${publicItemId}`}
+                    >
+                      #{publicItemId}
+                      {isPrimary && <span className="font-sans text-[8px] text-cyan-300">primary</span>}
+                      {publicItemIds.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAlias(publicItemId)}
+                          className="ml-0.5 rounded p-0.5 text-emperia-muted transition-colors hover:bg-red-500/15 hover:text-red-300"
+                          title={`Remove only public item ID #${publicItemId}; keep the shared appearance`}
+                          aria-label={`Remove public item ID ${publicItemId}`}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      )}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
       <div className={`grid items-start gap-3 ${
         thing.category === 'item'
           ? 'grid-cols-1 lg:grid-cols-[minmax(300px,1fr)_minmax(0,2.6fr)]'

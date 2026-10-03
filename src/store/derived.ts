@@ -50,6 +50,14 @@ export function getThingsForCategory(
   if (!range) return [];
 
   const q = searchQuery.trim().toLowerCase();
+  const itemIdsByAppearance = new Map<number, number[]>();
+  if (activeCategory === 'item' && q) {
+    for (const [itemId, appearanceId] of objectData.itemAppearances) {
+      const itemIds = itemIdsByAppearance.get(appearanceId) ?? [];
+      itemIds.push(itemId);
+      itemIdsByAppearance.set(appearanceId, itemIds);
+    }
+  }
   const equipmentItemIdsByAppearance = new Map<number, number[]>();
   if (activeCategory === 'equipment' && equipmentFilter !== 'all') {
     for (const [itemId, appearance] of objectData.equipmentAppearances) {
@@ -101,24 +109,30 @@ export function getThingsForCategory(
       const displayId = getDisplayId(objectData, id);
       const idStr = displayId.toString();
       let match = idStr.includes(q);
-      if (!match && appearanceToItemIds && itemDefinitions) {
-        const itemId = appearanceToItemIds.get(id);
-        if (itemId != null) {
-          if (itemId.toString().includes(q)) match = true;
-          const def = itemDefinitions.get(itemId);
-          const definitionName = readItemProperty(def?.properties, 'name');
-          if (!match && typeof definitionName === 'string') {
-            match = definitionName.toLowerCase().includes(q);
+      if (!match && activeCategory === 'item') {
+        // A visual appearance may be shared by several public item IDs. Search
+        // all aliases instead of only the primary ID chosen for the grid label.
+        const linkedItemIds = itemIdsByAppearance.get(id) ?? [];
+        for (const itemId of linkedItemIds) {
+          if (itemId.toString().includes(q)) {
+            match = true;
+            break;
           }
-          if (!match && itemLocalizations) {
-            for (const localizedItems of Object.values(itemLocalizations)) {
-              const localizedName = localizedItems.get(itemId)?.name;
-              if (localizedName?.toLowerCase().includes(q)) {
-                match = true;
-                break;
-              }
+          const def = itemDefinitions?.get(itemId);
+          const definitionName = readItemProperty(def?.properties, 'name');
+          if (typeof definitionName === 'string' && definitionName.toLowerCase().includes(q)) {
+            match = true;
+            break;
+          }
+          if (!itemLocalizations) continue;
+          for (const localizedItems of Object.values(itemLocalizations)) {
+            const localizedName = localizedItems.get(itemId)?.name;
+            if (localizedName?.toLowerCase().includes(q)) {
+              match = true;
+              break;
             }
           }
+          if (match) break;
         }
       }
       if (!match) continue;

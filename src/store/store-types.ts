@@ -162,6 +162,8 @@ export interface OBState {
 
   // Server definitions actions
   updateItemDefinition: (appearanceId: number, data: Partial<ItemDefinition>) => void;
+  /** Remove one public item ID while preserving its shared visual appearance. */
+  removeItemAlias: (itemId: number) => boolean;
   updateItemLocalization: (itemId: number, locale: ItemLocale, text: ItemLocalizedText | null) => void;
   markItemTranslationReviewed: (itemId: number, locale: Exclude<ItemLocale, 'en'>) => void;
   resetItemTranslationReviews: (locale?: Exclude<ItemLocale, 'en'>) => number;

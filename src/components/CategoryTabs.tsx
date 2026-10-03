@@ -167,7 +167,16 @@ export function CategoryTabs() {
                   : [selectedThingId];
                 if (selectedIds.length === 1) {
                   const dId = getDisplayId(objectData, selectedIds[0]);
-                  if (confirm(`Clear ${activeCategory} #${dId}? This will strip all sprites, properties, and flags but keep the slot.`)) {
+                  const linkedPublicIds = activeCategory === 'item'
+                    ? Array.from(objectData.itemAppearances.entries())
+                      .filter(([, appearanceId]) => appearanceId === selectedIds[0])
+                      .map(([itemId]) => itemId)
+                      .sort((left, right) => left - right)
+                    : [];
+                  const sharedWarning = linkedPublicIds.length > 1
+                    ? `\n\nThis appearance is shared by public IDs ${linkedPublicIds.map((id) => `#${id}`).join(', ')}. Clearing it affects every linked ID. To remove only one ID, use Public Item IDs in the Properties tab.`
+                    : '';
+                  if (confirm(`Clear ${activeCategory} #${dId}? This will strip all sprites, properties, and flags but keep the slot.${sharedWarning}`)) {
                     clearThings(selectedIds);
                   }
                 } else if (confirm(`Clear ${selectedIds.length} selected ${activeCategory} slots? This will strip all sprites, properties, and flags but keep the slots.`)) {
