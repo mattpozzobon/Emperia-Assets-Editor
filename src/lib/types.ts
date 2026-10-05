@@ -82,6 +82,8 @@ export interface ThingType {
   frameGroups: FrameGroup[];
   /** Single layer whose RGB colors identify Leather, Cloth, Metal, and Wood regions. */
   materialMaskLayer?: number;
+  /** EOBJ colour regions: canonical [0] (Primary) or [0, 1] (Primary/Secondary). */
+  colorMaskSources?: number[];
   /** Original binary bytes (flags + frame groups) for lossless round-trip */
   rawBytes?: Uint8Array;
 }

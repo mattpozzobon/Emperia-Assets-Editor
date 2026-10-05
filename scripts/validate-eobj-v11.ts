@@ -106,7 +106,7 @@ const source: ObjectData = {
 };
 
 const parsed = parseObjectData(compileObjectData(source));
-if (parsed.formatVersion !== 15) throw new Error(`Expected EOBJ v15, got v${parsed.formatVersion}`);
+if (parsed.formatVersion !== 16) throw new Error(`Expected EOBJ v16, got v${parsed.formatVersion}`);
 for (const [itemId, identity] of itemIdentities) {
   if (parsed.itemIdentities.get(itemId) !== identity) {
     throw new Error(`Identity round-trip failed for item ${itemId}: ${identity}`);
@@ -196,4 +196,4 @@ if (inferNamedItemIdentity('arena leaderboard', flags) === 'taskboard') {
   throw new Error('Unrelated leaderboards must not infer the taskboard identity');
 }
 
-console.log(`Validated EOBJ v15 round-trip for ${identities.length} item identities.`);
+console.log(`Validated EOBJ v16 round-trip for ${identities.length} item identities.`);

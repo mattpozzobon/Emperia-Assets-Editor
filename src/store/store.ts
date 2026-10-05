@@ -120,11 +120,12 @@ export const useOBStore = create<OBState>((set, get) => ({
   blendLayers: false,
   currentFrame: 0,
   playing: false,
-  outfitColors: { head: 0, body: 0, legs: 0, feet: 0 },
+  outfitColors: { primary: 0, secondary: 0 },
   showColorPicker: null,
   materialMaskPaintMode: null,
   materialMaskBrushSize: 1,
   activeMaterialMaskKind: 2,
+  activeColorMaskRegion: 'primary',
 
   // ─── File loading ───────────────────────────────────────────────────────────
 
@@ -375,6 +376,7 @@ export const useOBStore = create<OBState>((set, get) => ({
       materialMaskPaintMode: null,
       materialMaskBrushSize: 1,
       activeMaterialMaskKind: 2,
+      activeColorMaskRegion: 'primary',
       activeGroup: 0,
       activeDirection: 2,
       activePatternY: 0,

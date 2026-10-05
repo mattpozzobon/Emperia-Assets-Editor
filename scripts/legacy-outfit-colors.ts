@@ -1,11 +1,11 @@
-import type { ThingType } from './types';
+import type { ThingType } from '../src/lib/types';
 
 /** Legacy masks are encoded as layer 2 without a material-mask catalog entry. */
 export function getColorMaskLayer(thing: ThingType | null | undefined): number | undefined {
   return thing && thing.materialMaskLayer == null && thing.frameGroups.some(group => group.layers >= 2) ? 1 : undefined;
 }
 
-export const COLOR_MASK_COLORS = { primary: 0xFFFF00, secondary: 0xFF0000 } as const;
+export const COLOR_MASK_COLORS = { head: 0xFFFF00, body: 0xFF0000, legs: 0x00FF00, feet: 0x0000FF } as const;
 
 /**
  * Outfit color palette and mask application logic.
@@ -14,6 +14,8 @@ export const COLOR_MASK_COLORS = { primary: 0xFFFF00, secondary: 0xFF0000 } as c
  * Mask channel convention (ABGR as Uint32):
  *   0xFF00FFFF = Yellow channel (Head)
  *   0xFF0000FF = Red channel   (Body)
+ *   0xFF00FF00 = Green channel (Legs)
+ *   0xFFFF0000 = Blue channel  (Feet)
  */
 
 /** 133-entry Tibia outfit color palette (RGB, no alpha). */
@@ -44,13 +46,17 @@ export const PALETTE_SIZE = OUTFIT_PALETTE.length;
 /** Mask pixel values (ABGR Uint32 on little-endian). */
 const MASK_YELLOW = 0xFF00FFFF; // Head
 const MASK_RED    = 0xFF0000FF; // Body
+const MASK_GREEN  = 0xFF00FF00; // Legs
+const MASK_BLUE   = 0xFFFF0000; // Feet
 
 export interface OutfitColorIndices {
-  primary: number;   // yellow channel index (0-132)
-  secondary: number;   // red channel index
+  head: number;   // yellow channel index (0-132)
+  body: number;   // red channel index
+  legs: number;   // green channel index
+  feet: number;   // blue channel index
 }
 
-export const DEFAULT_OUTFIT_COLORS: OutfitColorIndices = { primary: 0, secondary: 0 };
+export const DEFAULT_OUTFIT_COLORS: OutfitColorIndices = { head: 0, body: 0, legs: 0, feet: 0 };
 
 /** Get the RGB triplet from a palette index. */
 export function paletteRGB(index: number): [number, number, number] {
@@ -67,8 +73,10 @@ export function applyOutfitMask(
   mask: ImageData,
   colors: OutfitColorIndices,
 ): void {
-  const HEAD = OUTFIT_PALETTE[Math.max(0, Math.min(PALETTE_SIZE - 1, colors.primary))];
-  const BODY = OUTFIT_PALETTE[Math.max(0, Math.min(PALETTE_SIZE - 1, colors.secondary))];
+  const HEAD = OUTFIT_PALETTE[Math.max(0, Math.min(PALETTE_SIZE - 1, colors.head))];
+  const BODY = OUTFIT_PALETTE[Math.max(0, Math.min(PALETTE_SIZE - 1, colors.body))];
+  const LEGS = OUTFIT_PALETTE[Math.max(0, Math.min(PALETTE_SIZE - 1, colors.legs))];
+  const FEET = OUTFIT_PALETTE[Math.max(0, Math.min(PALETTE_SIZE - 1, colors.feet))];
 
   const maskU32 = new Uint32Array(mask.data.buffer);
   const bd = base.data;
@@ -79,6 +87,8 @@ export function applyOutfitMask(
     switch (maskU32[i]) {
       case MASK_YELLOW: color = HEAD; break;
       case MASK_RED:    color = BODY; break;
+      case MASK_GREEN:  color = LEGS; break;
+      case MASK_BLUE:   color = FEET; break;
       default: continue;
     }
     bd[off + 0] = (bd[off + 0] * ((color >> 0) & 0xFF)) / 0xFF;

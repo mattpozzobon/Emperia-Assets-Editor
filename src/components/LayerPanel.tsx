@@ -2,13 +2,18 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CopyPlus } from 'lucide-react';
 import { useOBStore } from '../store';
 import { clearSpriteCache, clearSpriteCacheId, decodeSprite } from '../lib/sprite-decoder';
-import { paletteToCSS, OUTFIT_PALETTE, PALETTE_SIZE } from '../lib/outfit-colors';
+import { COLOR_MASK_COLORS, getColorMaskLayer, paletteToCSS, OUTFIT_PALETTE, PALETTE_SIZE } from '../lib/outfit-colors';
 import type { OutfitColorIndices } from '../lib/outfit-colors';
+import { COLOR_MASK_REGION_LABELS, ensureColorMaskRegion } from '../lib/color-mask-migration';
 import { clearFrameGroupLayer, resizeFrameGroupLayers } from '../lib/frame-group-layout';
 import { collectMaterialBaseSpriteIds, desaturateSprite, fillMaterialMaskFromNonBlackPixels, findSharedMaterialMaskSpriteIds, materialColorToCSS, MATERIAL_MASK_COLORS, remapMaterialMaskSpriteIds } from '../lib/material-mask';
 import { MATERIAL_MASK_KINDS } from '../lib/types';
 import type { MaterialMaskKind } from '../lib/types';
 import { ParamField, StepperBtn } from './ui-primitives';
+
+const COLOR_MASK_OPTIONS = (['primary', 'secondary'] as const).map(kind => ({
+  kind: kind as keyof OutfitColorIndices, label: COLOR_MASK_REGION_LABELS[kind as keyof OutfitColorIndices], color: materialColorToCSS(COLOR_MASK_COLORS[kind]),
+}));
 
 const MAX_ANIMATION_FRAME_DURATION_MS = 0xFFFF_FFFF;
 const MATERIAL_MASK_OPTIONS: { kind: MaterialMaskKind; label: string; color: string }[] = [
@@ -25,7 +30,6 @@ export function LayerPanel() {
   const category = useOBStore((s) => s.activeCategory);
   const editVersion = useOBStore((s) => s.editVersion);
 
-  const activeLayer = useOBStore((s) => s.activeLayer);
   const blendLayers = useOBStore((s) => s.blendLayers);
   const currentFrame = useOBStore((s) => s.currentFrame);
   const playing = useOBStore((s) => s.playing);
@@ -34,6 +38,7 @@ export function LayerPanel() {
   const materialMaskPaintMode = useOBStore((s) => s.materialMaskPaintMode);
   const materialMaskBrushSize = useOBStore((s) => s.materialMaskBrushSize);
   const activeMaterialMaskKind = useOBStore((s) => s.activeMaterialMaskKind);
+  const activeColorMaskRegion = useOBStore((s) => s.activeColorMaskRegion);
   const activeGroup = useOBStore((s) => s.activeGroup);
 
   const thing = selectedId != null ? objectData?.things.get(selectedId) ?? null : null;
@@ -51,10 +56,13 @@ export function LayerPanel() {
   const hasMultipleLayers = group ? group.layers > 1 : false;
   const isAnimated = group ? group.animationLength > 1 : false;
   const showOffset = isDirectionalAppearance || isEffect || (thing?.flags.hasDisplacement ?? false);
-  const showColors = isDirectionalAppearance && blendLayers && (group?.layers ?? 0) >= 2;
+  const hasColorMask = supportsMaterialMask && getColorMaskLayer(thing) != null;
+  const showColors = (hasColorMask || category === 'hair') && blendLayers && (group?.layers ?? 0) >= 2;
   const hasMaterialMask = supportsMaterialMask && thing?.materialMaskLayer != null;
-  const activeMaterialMaskLayer = thing?.materialMaskLayer;
-  const activeMaterialMaskLabel = MATERIAL_MASK_OPTIONS.find((option) => option.kind === activeMaterialMaskKind)?.label ?? 'Material';
+  const hasMask = hasMaterialMask || hasColorMask;
+  const activeMaterialMaskLayer = thing?.materialMaskLayer ?? (hasColorMask ? 1 : undefined);
+  const activeMaskColor = hasColorMask ? COLOR_MASK_COLORS[activeColorMaskRegion] : MATERIAL_MASK_COLORS[activeMaterialMaskKind];
+  const activeMaterialMaskLabel = hasColorMask ? COLOR_MASK_OPTIONS.find(option => option.kind === activeColorMaskRegion)!.label : MATERIAL_MASK_OPTIONS.find((option) => option.kind === activeMaterialMaskKind)?.label ?? 'Material';
   const sharedMaterialMaskSpriteIdsByGroup = useMemo(() => {
     if (!objectData || !thing || activeMaterialMaskLayer == null) return [];
     return thing.frameGroups.map((frameGroup) => (
@@ -91,15 +99,37 @@ export function LayerPanel() {
       for (const frameGroup of thing.frameGroups) {
         if (frameGroup.layers < 2) resizeFrameGroupLayers(frameGroup, 2);
       }
+      delete thing.colorMaskSources;
       thing.materialMaskLayer = 1;
       useOBStore.setState({ activeMaterialMaskKind: MATERIAL_MASK_KINDS.leather, activeLayer: 1, blendLayers: true, materialMaskPaintMode: null, selectedSlots: [] });
     } else {
-      for (const frameGroup of thing.frameGroups) clearFrameGroupLayer(frameGroup, 1);
+      for (const frameGroup of thing.frameGroups) {
+        clearFrameGroupLayer(frameGroup, 1);
+        if (frameGroup.layers === 2) resizeFrameGroupLayers(frameGroup, 1);
+      }
       delete thing.materialMaskLayer;
       useOBStore.setState({ activeLayer: 0, blendLayers: false, materialMaskPaintMode: null, selectedSlots: [] });
     }
     markThingDirty();
   }, [markThingDirty, supportsMaterialMask, thing]);
+
+  const setColorMaskEnabled = useCallback((enabled: boolean) => {
+    if (!thing || !supportsMaterialMask || thing.materialMaskLayer != null) return;
+    if (!enabled && thing.frameGroups.some(frameGroup => frameGroup.layers > 2)) return;
+    for (const frameGroup of thing.frameGroups) {
+      if (enabled && frameGroup.layers < 2) resizeFrameGroupLayers(frameGroup, 2);
+      if (!enabled) resizeFrameGroupLayers(frameGroup, 1);
+    }
+    if (enabled) thing.colorMaskSources = [0];
+    else delete thing.colorMaskSources;
+    useOBStore.setState({ activeColorMaskRegion: 'primary', activeLayer: enabled ? 1 : 0, blendLayers: enabled, materialMaskPaintMode: null, selectedSlots: [] });
+    markThingDirty();
+  }, [markThingDirty, supportsMaterialMask, thing]);
+
+  const selectColorMaskRegion = useCallback((region: 'primary' | 'secondary') => {
+    if (!thing) return;
+    useOBStore.setState({ activeColorMaskRegion: region, activeLayer: 1, blendLayers: false, selectedSlots: [] });
+  }, [thing, markThingDirty]);
 
   const selectMaterialMaskColor = useCallback((kind: MaterialMaskKind) => {
     if (!thing || !hasMaterialMask) return;
@@ -141,9 +171,11 @@ export function LayerPanel() {
         if (!source) continue;
         const newSpriteId = ++nextSpriteId;
         replacements.set(spriteId, newSpriteId);
-        // A shared mask can contain pixels authored for another group or
-        // appearance. Start this group's private mask completely transparent.
-        spriteOverrides.set(newSpriteId, new ImageData(source.width, source.height));
+        // Preserve legacy color regions when isolating an existing color mask.
+        // Material masks keep the existing fresh-mask behavior.
+        spriteOverrides.set(newSpriteId, hasColorMask
+          ? new ImageData(new Uint8ClampedArray(source.data), source.width, source.height)
+          : new ImageData(source.width, source.height));
         dirtySpriteIds.add(newSpriteId);
       }
 
@@ -167,7 +199,7 @@ export function LayerPanel() {
       selectedSlots: [],
       editVersion: store.editVersion + 1,
     });
-  }, [activeMaterialMaskLayer, hasSharedMaterialMasks, sharedMaterialMaskSpriteIdsByGroup, spriteData, thing]);
+  }, [activeMaterialMaskLayer, hasColorMask, hasSharedMaterialMasks, sharedMaterialMaskSpriteIdsByGroup, spriteData, thing]);
 
   const desaturateBaseSprites = useCallback(() => {
     if (!thing || !spriteData || activeMaterialMaskLayer == null) return;
@@ -210,7 +242,8 @@ export function LayerPanel() {
     const dirtySpriteIds = new Set(store.dirtySpriteIds);
     const dirtyIds = new Set(store.dirtyIds);
     const maskOwners = new Map<number, number>();
-    const materialColor = MATERIAL_MASK_COLORS[activeMaterialMaskKind];
+    if (hasColorMask) ensureColorMaskRegion(thing, activeColorMaskRegion);
+    const materialColor = activeMaskColor;
     let nextSpriteId = spriteData.spriteCount;
     let changed = false;
 
@@ -269,7 +302,7 @@ export function LayerPanel() {
       dirtySpriteIds,
       editVersion: store.editVersion + 1,
     });
-  }, [activeMaterialMaskKind, activeMaterialMaskLayer, hasSharedMaterialMasks, spriteData, thing]);
+  }, [activeMaskColor, activeColorMaskRegion, hasColorMask, activeMaterialMaskLayer, hasSharedMaterialMasks, spriteData, thing]);
 
   const updateFrameGroupProp = useCallback((key: string, value: number) => {
     if (!thing || !group) return;
@@ -305,7 +338,7 @@ export function LayerPanel() {
       {supportsMaterialMask && (
         <>
           <div className="px-2 py-1 bg-amber-950/30 border-b border-emperia-border/40">
-            <span className="text-[9px] font-semibold uppercase tracking-wider text-amber-400 opacity-90">Material Mask</span>
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-amber-400 opacity-90">Masks</span>
           </div>
           <div className="px-3 py-2 space-y-2">
             <div className="flex items-center gap-2">
@@ -313,18 +346,20 @@ export function LayerPanel() {
                 <input
                   type="checkbox"
                   checked={hasMaterialMask}
+                  disabled={hasColorMask}
+                  title={hasColorMask ? 'Disable color masks first' : undefined}
                   onChange={(event) => setMaterialMaskEnabled(event.target.checked)}
                   className="w-3 h-3 accent-amber-500"
                 />
                 <span className="text-emperia-text">Use material masks</span>
               </label>
-              {hasMaterialMask && (
+              {hasMask && (
                 hasSharedMaterialMasks ? (
                   <button
                     type="button"
                     onClick={makeMaterialMasksUnique}
                     className="ml-auto flex shrink-0 items-center gap-1 rounded border border-amber-400/60 bg-amber-500/15 px-1.5 py-0.5 text-[8px] text-amber-300 hover:bg-amber-500/25"
-                    title={`${sharedMaterialMaskReferenceCount} material mask reference${sharedMaterialMaskReferenceCount === 1 ? ' is' : 's are'} shared across animation groups or appearances. Create fresh private masks for every group.`}
+                    title={`${sharedMaterialMaskReferenceCount} mask reference${sharedMaterialMaskReferenceCount === 1 ? ' is' : 's are'} shared across animation groups or appearances. Create private masks for every group.`}
                   >
                     <CopyPlus className="h-2.5 w-2.5" />
                     Make masks unique ({sharedMaterialMaskReferenceCount})
@@ -332,23 +367,31 @@ export function LayerPanel() {
                 ) : (
                   <span
                     className="ml-auto shrink-0 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[8px] text-emerald-400"
-                    title="The material mask sprite IDs are private in every animation group"
+                    title="The mask sprite IDs are private in every animation group"
                   >
                     Masks unique
                   </span>
                 )
               )}
             </div>
-            {hasMaterialMask && (
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" checked={hasColorMask} disabled={hasMaterialMask || (hasColorMask && thing.frameGroups.some(frameGroup => frameGroup.layers > 2))}
+                title={hasMaterialMask ? 'Disable material masks first' : hasColorMask && thing.frameGroups.some(frameGroup => frameGroup.layers > 2) ? 'Reduce to two layers before removing the color mask' : undefined}
+                onChange={(event) => setColorMaskEnabled(event.target.checked)} className="w-3 h-3 accent-amber-500" />
+              <span className="text-emperia-text">Use color masks</span>
+            </label>
+            {hasMask && (
               <div className="space-y-1.5 rounded border border-amber-500/15 bg-amber-950/10 p-2">
                 <div className="flex gap-1">
-                  {MATERIAL_MASK_OPTIONS.map((option) => {
-                    const selected = activeMaterialMaskKind === option.kind;
+                  {(hasColorMask ? COLOR_MASK_OPTIONS : MATERIAL_MASK_OPTIONS).map((option) => {
+                    const selected = (hasColorMask ? activeColorMaskRegion : activeMaterialMaskKind) === option.kind;
                     return (
                       <button
                         key={option.kind}
                         type="button"
-                        onClick={() => selectMaterialMaskColor(option.kind)}
+                        onClick={() => hasColorMask
+                          ? selectColorMaskRegion(option.kind as 'primary' | 'secondary')
+                          : selectMaterialMaskColor(option.kind as MaterialMaskKind)}
                         className={`flex flex-1 items-center justify-center gap-1 rounded border px-1 py-1 text-[8px] ${selected ? 'border-white/50 bg-white/10 text-white' : 'border-emperia-border text-emperia-muted hover:text-emperia-text'}`}
                         title={`Paint ${option.label} regions`}
                       >
@@ -359,13 +402,13 @@ export function LayerPanel() {
                   })}
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-emperia-muted">All material colors share layer {activeMaterialMaskLayer != null ? activeMaterialMaskLayer + 1 : '—'}</span>
+                  <span className="text-emperia-muted">All mask colors share layer {activeMaterialMaskLayer != null ? activeMaterialMaskLayer + 1 : '—'}</span>
                 </div>
                 <button
                   type="button"
                   onClick={desaturateBaseSprites}
                   className="w-full rounded border border-emperia-border px-2 py-1 text-[9px] text-emperia-muted hover:border-amber-400/60 hover:text-emperia-text"
-                  title="Set HSV saturation to zero for Idle and Moving sprites, excluding the material mask layer"
+                  title="Set HSV saturation to zero for Idle and Moving sprites, excluding the mask layer"
                 >
                   Set Idle + Moving saturation to 0
                 </button>
@@ -376,7 +419,7 @@ export function LayerPanel() {
                   className="w-full rounded border border-amber-500/30 bg-amber-950/20 px-2 py-1 text-[9px] text-amber-300 hover:border-amber-400/70 hover:bg-amber-950/35 disabled:cursor-not-allowed disabled:opacity-40"
                   title={hasSharedMaterialMasks
                     ? 'Make the shared mask IDs unique in every animation group before creating masks'
-                    : `Add ${activeMaterialMaskLabel} to visible, non-black pixels in Idle and Moving that do not already have a material`}
+                    : `Add ${activeMaterialMaskLabel} to visible, non-black pixels in Idle and Moving that do not already have a mask region`}
                 >
                   Create Idle + Moving {activeMaterialMaskLabel} masks
                 </button>
@@ -386,14 +429,14 @@ export function LayerPanel() {
                     type="button"
                     onClick={() => setPaintMode('paint')}
                     disabled={hasActiveGroupSharedMaterialMasks}
-                    title={hasActiveGroupSharedMaterialMasks ? 'Make the shared mask IDs unique before editing' : 'Paint the selected material'}
+                    title={hasActiveGroupSharedMaterialMasks ? 'Make the shared mask IDs unique before editing' : 'Paint the selected region'}
                     className={`rounded border px-2 py-1 text-[9px] disabled:cursor-not-allowed disabled:opacity-40 ${materialMaskPaintMode === 'paint' ? 'border-amber-400 bg-amber-500/20 text-amber-300' : 'border-emperia-border text-emperia-muted hover:text-emperia-text'}`}
                   >Paint</button>
                   <button
                     type="button"
                     onClick={() => setPaintMode('erase')}
                     disabled={hasActiveGroupSharedMaterialMasks}
-                    title={hasActiveGroupSharedMaterialMasks ? 'Make the shared mask IDs unique before editing' : 'Erase material mask pixels'}
+                    title={hasActiveGroupSharedMaterialMasks ? 'Make the shared mask IDs unique before editing' : 'Erase mask pixels'}
                     className={`rounded border px-2 py-1 text-[9px] disabled:cursor-not-allowed disabled:opacity-40 ${materialMaskPaintMode === 'erase' ? 'border-amber-400 bg-amber-500/20 text-amber-300' : 'border-emperia-border text-emperia-muted hover:text-emperia-text'}`}
                   >Erase</button>
                 </div>
@@ -410,31 +453,10 @@ export function LayerPanel() {
                   <span className="w-4 text-right font-mono text-emperia-text">{materialMaskBrushSize}</span>
                 </label>
                 <p className="text-[8px] leading-relaxed text-emperia-muted">
-                  Hold left mouse to paint and right mouse to erase. Leather is orange, Cloth is purple, Metal is blue, and Wood is green while editing. The item stays visible as a translucent guide.
+                  Hold left mouse to paint and right mouse to erase. {hasColorMask ? 'Primary is yellow; Secondary is red.' : 'Leather is orange, Cloth is purple, Metal is blue, and Wood is green.'} The item stays visible as a translucent guide.
                 </p>
               </div>
             )}
-          </div>
-        </>
-      )}
-
-      {/* ── LAYER ── */}
-      {hasMultipleLayers && group && (
-        <>
-          <div className="px-2 py-1 bg-purple-950/30 border-b border-emperia-border/40">
-            <span className="text-[9px] font-semibold uppercase tracking-wider text-purple-400 opacity-80">Layer</span>
-          </div>
-          <div className="px-3 py-2 flex items-center gap-1">
-            <span className="text-emperia-muted shrink-0">Layer:</span>
-            <StepperBtn onClick={() => useOBStore.setState({ activeLayer: Math.max(0, activeLayer - 1), blendLayers: false, materialMaskPaintMode: null })} disabled={blendLayers}>‹</StepperBtn>
-            <span className={`font-mono w-8 text-center text-[9px] ${blendLayers ? 'text-emperia-muted' : 'text-emperia-text'}`}>
-              {blendLayers ? 'All' : `${activeLayer + 1}/${group.layers}`}
-            </span>
-            <StepperBtn onClick={() => useOBStore.setState({ activeLayer: Math.min(group.layers - 1, activeLayer + 1), blendLayers: false, materialMaskPaintMode: null })} disabled={blendLayers}>›</StepperBtn>
-            <label className="flex items-center gap-0.5 cursor-pointer ml-1">
-              <input type="checkbox" checked={blendLayers} onChange={() => useOBStore.setState({ blendLayers: !blendLayers, materialMaskPaintMode: null })} className="w-2.5 h-2.5 accent-emperia-accent" />
-              <span className="text-emperia-muted text-[9px]">{hasMaterialMask ? 'Preview' : 'Blend'}</span>
-            </label>
           </div>
         </>
       )}
@@ -572,15 +594,15 @@ export function LayerPanel() {
           </div>
           <div className="px-3 py-2">
             <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-              {(['head', 'body', 'legs', 'feet'] as const).map((channel) => (
+              {(['primary', 'secondary'] as const).map((channel) => (
                 <div key={channel} className="flex items-center gap-1">
                   <button
                     onClick={() => useOBStore.setState({ showColorPicker: showColorPicker === channel ? null : channel })}
                     className="w-4 h-4 rounded border border-emperia-border shrink-0"
                     style={{ backgroundColor: paletteToCSS(outfitColors[channel]) }}
-                    title={`${channel}: ${outfitColors[channel]}`}
+                    title={`${COLOR_MASK_REGION_LABELS[channel]}: ${outfitColors[channel]}`}
                   />
-                  <span className="text-emperia-muted capitalize text-[9px]">{channel}</span>
+                  <span className="text-emperia-muted text-[9px]">{COLOR_MASK_REGION_LABELS[channel]}</span>
                   <StepperBtn onClick={() => useOBStore.setState({ outfitColors: { ...outfitColors, [channel]: Math.max(0, outfitColors[channel] - 1) } })}>‹</StepperBtn>
                   <span className="text-emperia-text font-mono w-5 text-center text-[9px]">{outfitColors[channel]}</span>
                   <StepperBtn onClick={() => useOBStore.setState({ outfitColors: { ...outfitColors, [channel]: Math.min(PALETTE_SIZE - 1, outfitColors[channel] + 1) } })}>›</StepperBtn>

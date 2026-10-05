@@ -653,8 +653,8 @@ export async function runCompile(
       od.itemSeatDefinitions,
     );
     reparsedObject = parseObjectData(buf);
-    if (reparsedObject.formatVersion !== 15) {
-      throw new Error(`Generated EOBJ v${reparsedObject.formatVersion}; expected v15.`);
+    if (reparsedObject.formatVersion !== 16) {
+      throw new Error(`Generated EOBJ v${reparsedObject.formatVersion}; expected v16.`);
     }
     if (reparsedObject.itemAppearances.size !== itemAppearances.size) {
       throw new Error('Generated EOBJ item mapping is incomplete.');
@@ -663,6 +663,9 @@ export async function runCompile(
       throw new Error('Generated EOBJ item identity table is incomplete.');
     }
     for (const [appearanceId, thing] of od.things) {
+      if (JSON.stringify(reparsedObject.things.get(appearanceId)?.colorMaskSources) !== JSON.stringify(thing.colorMaskSources)) {
+        throw new Error(`Generated EOBJ color regions are incomplete for appearance ${appearanceId}.`);
+      }
       if (reparsedObject.things.get(appearanceId)?.materialMaskLayer !== thing.materialMaskLayer) {
         throw new Error(`Generated EOBJ material mask metadata is incomplete for appearance ${appearanceId}.`);
       }

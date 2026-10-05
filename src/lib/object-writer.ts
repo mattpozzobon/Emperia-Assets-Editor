@@ -8,7 +8,7 @@ import type { ObjectData, ThingFlags, FrameGroup, EquipmentAppearance, HairDefin
 import { encodeItemSlotType } from './item-slot-types';
 import { encodeItemIdentity } from './item-identity-codec';
 
-const EOBJ_FORMAT_VERSION = 15;
+const EOBJ_FORMAT_VERSION = 16;
 
 const ATTR = {
   ThingAttrGround: 0,
@@ -250,6 +250,17 @@ export function compileObjectData(
       throw new Error(`Material mask appearance ${appearanceId} references missing layer ${layer + 1}`);
     }
     w.writeUInt16(appearanceId);
+  }
+
+  const colorMasks = Array.from(data.things.values()).filter(thing => thing.colorMaskSources != null).sort((a, b) => a.id - b.id);
+  if (colorMasks.length > 65535) throw new Error('Too many color masks');
+  w.writeUInt16(colorMasks.length);
+  for (const thing of colorMasks) {
+    const sources = thing.colorMaskSources!;
+    if (!Number.isInteger(thing.id) || thing.id < 100 || thing.id > 65535 || !thing.frameGroups.some(group => group.layers > 1) || thing.materialMaskLayer != null || sources.length < 1 || sources.length > 2 || new Set(sources).size !== sources.length || sources.some((source, index) => source !== index)) throw new Error(`Invalid color regions for appearance ${thing.id}`);
+    w.writeUInt16(thing.id);
+    w.writeUInt8(sources.length);
+    for (const source of sources) w.writeUInt8(source);
   }
 
   const equipment = Array.from(equipmentAppearances.entries()).sort(([a], [b]) => a - b);

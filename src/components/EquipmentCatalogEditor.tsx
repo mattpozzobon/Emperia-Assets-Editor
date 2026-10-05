@@ -169,7 +169,7 @@ function renderOutfitThumb(
 
   const px = Math.min(direction, fg.patternX - 1);
   const hasOutfitMask = fg.layers >= 2;
-  const defaultColors = { head: 0, body: 0, legs: 0, feet: 0 };
+  const defaultColors = { primary: 0, secondary: 0 };
 
   for (let ty = 0; ty < fg.height; ty++) {
     for (let tx = 0; tx < fg.width; tx++) {

@@ -1,7 +1,8 @@
+import { ensureColorMaskRegion } from '../lib/color-mask-migration';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useOBStore } from '../store';
 import { decodeSprite, clearSpriteCache } from '../lib/sprite-decoder';
-import { applyOutfitMask } from '../lib/outfit-colors';
+import { applyOutfitMask, COLOR_MASK_COLORS, getColorMaskLayer } from '../lib/outfit-colors';
 import type { OutfitColorIndices } from '../lib/outfit-colors';
 import { resizeFrameGroupLayers } from '../lib/frame-group-layout';
 import { applyMaterialMaskDebugOverlay, MATERIAL_MASK_COLORS, paintMaterialMaskStroke } from '../lib/material-mask';
@@ -58,6 +59,9 @@ export function SpritePreview() {
   const materialMaskPaintMode = useOBStore((s) => s.materialMaskPaintMode);
   const materialMaskBrushSize = useOBStore((s) => s.materialMaskBrushSize);
   const activeMaterialMaskKind = useOBStore((s) => s.activeMaterialMaskKind);
+  const activeColorMaskRegion = useOBStore((s) => s.activeColorMaskRegion);
+  const editableMaskLayer = thing?.materialMaskLayer ?? getColorMaskLayer(thing);
+  const activeMaskColor = thing?.materialMaskLayer != null ? MATERIAL_MASK_COLORS[activeMaterialMaskKind] : COLOR_MASK_COLORS[activeColorMaskRegion];
   const [previewMode, setPreviewMode] = useState(false); // true = single direction/pattern preview
   const activeDirection = useOBStore((s) => s.activeDirection);
   const setActiveDirection = (direction: number) => useOBStore.setState({ activeDirection: direction });
@@ -106,6 +110,7 @@ export function SpritePreview() {
       showColorPicker: null,
       materialMaskPaintMode: null,
       activeMaterialMaskKind: MATERIAL_MASK_KINDS.leather,
+      activeColorMaskRegion: 'primary',
     });
     setActiveZ(0);
     // Character appearances use the same cardinal-direction preview.
@@ -115,11 +120,11 @@ export function SpritePreview() {
   useEffect(() => {
     if (
       materialMaskPaintMode
-      && (!supportsMaterialMask || thing?.materialMaskLayer !== activeLayer || blendLayers)
+      && (!supportsMaterialMask || editableMaskLayer !== activeLayer || blendLayers)
     ) {
       useOBStore.setState({ materialMaskPaintMode: null });
     }
-  }, [activeLayer, blendLayers, materialMaskPaintMode, supportsMaterialMask, thing?.materialMaskLayer]);
+  }, [activeLayer, blendLayers, materialMaskPaintMode, supportsMaterialMask, editableMaskLayer]);
 
   // Close copy menu on outside click
   useEffect(() => {
@@ -298,9 +303,9 @@ export function SpritePreview() {
           }
         }
 
-        const useOutfitMask = isDirectionalAppearance && blendLayers && group.layers >= 2;
-        const materialMaskLayer = supportsMaterialMask ? thing?.materialMaskLayer : undefined;
-        const useMaterialMask = blendLayers
+        const useOutfitMask = (isDirectionalAppearance || supportsMaterialMask) && thing?.materialMaskLayer == null && blendLayers && group.layers >= 2;
+        const materialMaskLayer = supportsMaterialMask ? editableMaskLayer : undefined;
+        const useMaterialMask = thing?.materialMaskLayer != null && blendLayers
           && materialMaskLayer != null
           && materialMaskLayer > 0
           && materialMaskLayer < group.layers;
@@ -394,7 +399,7 @@ export function SpritePreview() {
         }
       }
     }
-  }, [group, spriteData, spriteOverrides, activeGroup, activeLayer, activeZ, blendLayers, materialMaskPaintMode, previewMode, activeDirection, activePatternY, isDirectionalAppearance, isEffect, outfitColors, previewBaseOutfitId, effectReferenceOutfitId, effectReferenceGroup, showDisplacementGuide, selectedId, objectData, renderThingLayer, thing, editVersion, supportsMaterialMask]);
+  }, [group, spriteData, spriteOverrides, activeGroup, activeLayer, activeZ, blendLayers, materialMaskPaintMode, previewMode, activeDirection, activePatternY, isDirectionalAppearance, isEffect, outfitColors, previewBaseOutfitId, effectReferenceOutfitId, effectReferenceGroup, showDisplacementGuide, selectedId, objectData, renderThingLayer, thing, editVersion, supportsMaterialMask, editableMaskLayer]);
 
   useEffect(() => {
     renderFrame(currentFrame);
@@ -695,8 +700,8 @@ export function SpritePreview() {
 
   const canPaintMaterialMask = Boolean(
     supportsMaterialMask
-    && thing?.materialMaskLayer != null
-    && thing.materialMaskLayer === activeLayer
+    && editableMaskLayer != null
+    && editableMaskLayer === activeLayer
     && !blendLayers
     && materialMaskPaintMode,
   );
@@ -716,6 +721,7 @@ export function SpritePreview() {
 
   const paintMaterialMaskAt = useCallback((point: { slotIdx: number; x: number; y: number }) => {
     if (!group || !spriteData || !thing || !materialMaskPaintMode) return;
+    if (thing.materialMaskLayer == null) ensureColorMaskRegion(thing, activeColorMaskRegion);
     let spriteId = group.sprites[point.slotIdx] ?? 0;
     let source: ImageData | null = null;
     if (spriteId > 0) {
@@ -732,7 +738,7 @@ export function SpritePreview() {
       point,
       materialMaskBrushSize,
       (maskStrokeModeRef.current ?? materialMaskPaintMode) === 'erase',
-      MATERIAL_MASK_COLORS[activeMaterialMaskKind],
+      activeMaskColor,
     );
 
     if (spriteId > 0) {
@@ -749,7 +755,7 @@ export function SpritePreview() {
     dirtyIds.add(thing.id);
     useOBStore.setState({ dirty: true, dirtyIds });
     lastMaskPaintPointRef.current = point;
-  }, [activeMaterialMaskKind, addSprite, group, materialMaskBrushSize, materialMaskPaintMode, replaceSprite, spriteData, thing]);
+  }, [activeMaskColor, activeColorMaskRegion, addSprite, group, materialMaskBrushSize, materialMaskPaintMode, replaceSprite, spriteData, thing]);
 
   const handleMaskPointerDown = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
     if (!canPaintMaterialMask) return;
@@ -801,6 +807,7 @@ export function SpritePreview() {
     const layersChanged = key === 'layers' && value !== group.layers;
     if (layersChanged) {
       resizeFrameGroupLayers(group, value);
+      if (value < 2 && thing.frameGroups.every(frameGroup => frameGroup.layers < 2)) delete thing.colorMaskSources;
       if (thing.materialMaskLayer != null && thing.materialMaskLayer >= value) {
         delete thing.materialMaskLayer;
         useOBStore.setState({ materialMaskPaintMode: null });

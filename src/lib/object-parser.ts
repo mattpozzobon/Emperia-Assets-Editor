@@ -336,6 +336,19 @@ export function parseObjectData(buffer: ArrayBuffer): ObjectData {
       materialMaskLayers.set(appearanceId, materialMaskLayer);
     }
   }
+  const colorMaskSources = new Map<number, number[]>();
+  if (formatVersion >= 16) {
+    const count = packet.readUInt16();
+    for (let i = 0; i < count; i++) {
+      const id = packet.readUInt16();
+      const length = packet.readUInt8();
+      if (length < 1 || length > 4) throw new Error('Invalid color region count');
+      const sources = Array.from({ length }, () => packet.readUInt8());
+      if (sources.some(source => source > 3) || new Set(sources).size !== length || colorMaskSources.has(id) || materialMaskLayers.has(id)) throw new Error('Invalid color region mapping');
+      colorMaskSources.set(id, sources);
+    }
+  }
+
   const equipmentAppearances = new Map<number, import('./types').EquipmentAppearance>();
   const visualEquipmentAppearances = new Map<number, import('./types').VisualEquipmentAppearance>();
   const hairDefinitions = new Map<number, import('./types').HairDefinition>();
@@ -551,6 +564,7 @@ export function parseObjectData(buffer: ArrayBuffer): ObjectData {
       flags,
       frameGroups,
       ...(materialMaskLayer != null ? { materialMaskLayer } : {}),
+      ...(colorMaskSources.has(id) ? { colorMaskSources: colorMaskSources.get(id)! } : {}),
       rawBytes,
     });
   }

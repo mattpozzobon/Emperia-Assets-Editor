@@ -1,5 +1,6 @@
 import { useOBStore } from '../store';
 import type { ThingType, FrameGroup } from '../lib/types';
+import { getColorMaskLayer } from '../lib/outfit-colors';
 import { ParamField, StepperBtn } from './ui-primitives';
 
 interface ControlsPanelProps {
@@ -22,6 +23,17 @@ export function ControlsPanel({
   activeDirection, setActiveDirection, activePatternY, setActivePatternY,
   activeZ, setActiveZ, updateFrameGroupProp,
 }: ControlsPanelProps) {
+  const activeLayer = useOBStore((s) => s.activeLayer);
+  const blendLayers = useOBStore((s) => s.blendLayers);
+  const hasMask = thing.materialMaskLayer != null || getColorMaskLayer(thing) != null;
+
+  const selectLayer = (layer: number) => useOBStore.setState({
+    activeLayer: Math.max(0, Math.min(group.layers - 1, layer)),
+    blendLayers: false,
+    materialMaskPaintMode: null,
+    selectedSlots: [],
+  });
+
   return (
     <div className="border-t border-emperia-border text-[10px]">
 
@@ -43,9 +55,30 @@ export function ControlsPanel({
           <ParamField label="Pattern Z" value={group.patternZ} onChange={(v) => updateFrameGroupProp('patternZ', v)} min={1} max={8} labelClassName="text-[10px] text-blue-400/80" />
         </div>
         {/* Row 3: Layers + Animations (individually color-coded to match their sections) */}
-        <div className="grid grid-cols-2 gap-x-2">
+        <div className="grid grid-cols-2 items-start gap-x-2">
           <div className="bg-purple-950/20 border border-purple-500/10 rounded px-2 py-1.5">
             <ParamField label="Layers" value={group.layers} onChange={(v) => updateFrameGroupProp('layers', v)} min={1} max={255} labelClassName="text-[10px] text-purple-400/80" />
+            {group.layers > 1 && (
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-purple-500/15 pt-2">
+                <div className="flex items-center gap-1">
+                  <span className="mr-1 text-emperia-muted">Active layer</span>
+                  <StepperBtn onClick={() => selectLayer(activeLayer - 1)} disabled={blendLayers || activeLayer <= 0}>‹</StepperBtn>
+                  <span className="min-w-10 text-center font-mono text-emperia-text">
+                    {blendLayers ? 'All' : `${activeLayer + 1}/${group.layers}`}
+                  </span>
+                  <StepperBtn onClick={() => selectLayer(activeLayer + 1)} disabled={blendLayers || activeLayer >= group.layers - 1}>›</StepperBtn>
+                </div>
+                <label className="flex cursor-pointer items-center gap-1.5 text-emperia-muted">
+                  <input
+                    type="checkbox"
+                    checked={blendLayers}
+                    onChange={(event) => useOBStore.setState({ blendLayers: event.target.checked, materialMaskPaintMode: null, selectedSlots: [] })}
+                    className="h-3 w-3 accent-purple-500"
+                  />
+                  {hasMask ? 'Preview' : 'Blend'}
+                </label>
+              </div>
+            )}
           </div>
           <div className="bg-emerald-950/20 border border-emerald-500/10 rounded px-2 py-1.5">
             <ParamField label="Animations" value={group.animationLength} onChange={(v) => updateFrameGroupProp('animationLength', v)} min={1} max={999} labelClassName="text-[10px] text-emerald-400/80" />

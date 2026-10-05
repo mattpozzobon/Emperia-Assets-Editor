@@ -27,11 +27,13 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 
 const getSavedPanelWidth = (key: string, fallback: number, min: number, max: number): number => {
   if (typeof localStorage === 'undefined') return fallback;
-  const stored = Number(localStorage.getItem(key));
+  const saved = localStorage.getItem(key);
+  if (saved == null || saved.trim() === '') return fallback;
+  const stored = Number(saved);
   return Number.isFinite(stored) ? clamp(stored, min, max) : fallback;
 };
 
-type ResizeTarget = 'left' | 'right';
+type ResizeTarget = 'left' | 'right' | 'objectSprites';
 
 function ResizeHandle({ onPointerDown, label }: {
   onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void;
@@ -87,6 +89,9 @@ export default function App() {
   const [rightPanelWidth, setRightPanelWidth] = useState(() => (
     getSavedPanelWidth('emperia-ob-right-panel-width', 288, 220, 640)
   ));
+  const [objectSpritesPanelWidth, setObjectSpritesPanelWidth] = useState(() => (
+    getSavedPanelWidth('emperia-ob-object-sprites-panel-width', 340, 240, 600)
+  ));
   const resizeRef = useRef<{
     target: ResizeTarget;
     startX: number;
@@ -102,12 +107,18 @@ export default function App() {
   }, [rightPanelWidth]);
 
   useEffect(() => {
+    localStorage.setItem('emperia-ob-object-sprites-panel-width', String(objectSpritesPanelWidth));
+  }, [objectSpritesPanelWidth]);
+
+  useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
       const resize = resizeRef.current;
       if (!resize) return;
       const delta = event.clientX - resize.startX;
       if (resize.target === 'left') {
         setLeftPanelWidth(clamp(resize.startWidth + delta, 200, 520));
+      } else if (resize.target === 'objectSprites') {
+        setObjectSpritesPanelWidth(clamp(resize.startWidth - delta, 240, 600));
       } else {
         setRightPanelWidth(clamp(resize.startWidth - delta, 220, 640));
       }
@@ -120,9 +131,11 @@ export default function App() {
     };
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
     return () => {
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
@@ -267,7 +280,14 @@ export default function App() {
         </div>
 
         {/* Middle-right: Object sprite slots + layer/offset/colors */}
-        <div className="w-[260px] border-l border-emperia-border bg-emperia-bg overflow-y-auto flex flex-col">
+        <ResizeHandle
+          label="Resize object sprites"
+          onPointerDown={(event) => beginResize('objectSprites', objectSpritesPanelWidth, event)}
+        />
+        <div
+          className="shrink-0 bg-emperia-bg overflow-y-auto flex flex-col"
+          style={{ width: objectSpritesPanelWidth }}
+        >
           <ObjectSlots />
           <LayerPanel />
         </div>

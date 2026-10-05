@@ -1,3 +1,5 @@
+import { applyOutfitMask, COLOR_MASK_COLORS, getColorMaskLayer, OUTFIT_PALETTE } from '../src/lib/outfit-colors';
+import { resizeFrameGroupLayers } from '../src/lib/frame-group-layout';
 import fs from 'node:fs';
 import { compileObjectData } from '../src/lib/object-writer';
 import { parseObjectData } from '../src/lib/object-parser';
@@ -17,8 +19,8 @@ if (!thing || thing.category !== 'item' || thing.frameGroups.some((group) => gro
 
 thing.materialMaskLayer = 1;
 const roundTrip = parseObjectData(compileObjectData(parsed));
-if (roundTrip.formatVersion !== 15) {
-  throw new Error(`Expected EOBJ v15, received v${roundTrip.formatVersion}`);
+if (roundTrip.formatVersion !== 16) {
+  throw new Error(`Expected EOBJ v16, received v${roundTrip.formatVersion}`);
 }
 if (roundTrip.things.get(appearanceId)?.materialMaskLayer !== 1) {
   throw new Error('Material mask layer did not survive the EOBJ round-trip');
@@ -180,4 +182,33 @@ if (owner.frameGroups[0].sprites[1] === owner.frameGroups[1].sprites[1]) {
   throw new Error('Idle and Moving material masks still share a sprite ID after remapping both groups');
 }
 
-console.log(`Validated EOBJ v15 multi-material mask round-trip for appearance ${appearanceId}.`);
+console.log(`Validated EOBJ v16 multi-material mask round-trip for appearance ${appearanceId}.`);
+
+// The legacy checkbox persists through the existing layer layout, without a new catalog.
+delete thing.materialMaskLayer;
+thing.rawBytes = undefined;
+const legacyRoundTrip = parseObjectData(compileObjectData(parsed)).things.get(appearanceId)!;
+if (getColorMaskLayer(legacyRoundTrip) !== 1 || legacyRoundTrip.materialMaskLayer != null) {
+  throw new Error('Legacy color mask did not survive the EOBJ round-trip');
+}
+for (const group of thing.frameGroups) resizeFrameGroupLayers(group, 1);
+const disabledRoundTrip = parseObjectData(compileObjectData(parsed)).things.get(appearanceId)!;
+if (getColorMaskLayer(disabledRoundTrip) != null) throw new Error('Disabled color mask reappeared after saving');
+
+const regions = Object.keys(COLOR_MASK_COLORS) as (keyof typeof COLOR_MASK_COLORS)[];
+for (const region of regions) {
+  const legacyMask = { width: 1, height: 1, data: new Uint8ClampedArray(4) } as ImageData;
+  const whiteBase = { width: 1, height: 1, data: new Uint8ClampedArray([255, 255, 255, 255]) } as ImageData;
+  paintMaterialMaskStroke(legacyMask, { x: 0, y: 0 }, { x: 0, y: 0 }, 1, false, COLOR_MASK_COLORS[region]);
+  const colors = { primary: 0, secondary: 0, [region]: 80 };
+  applyOutfitMask(whiteBase, legacyMask, colors);
+  const tint = OUTFIT_PALETTE[80];
+  if (whiteBase.data[0] !== (tint & 255) || whiteBase.data[1] !== ((tint >>> 8) & 255) || whiteBase.data[2] !== ((tint >>> 16) & 255)) {
+    throw new Error(`Painted ${region} mask did not recolor its region`);
+  }
+  paintMaterialMaskStroke(legacyMask, { x: 0, y: 0 }, { x: 0, y: 0 }, 1, true);
+  if (legacyMask.data[3] !== 0) throw new Error(`Could not erase ${region} mask`);
+  fillMaterialMaskFromNonBlackPixels(whiteBase, legacyMask, COLOR_MASK_COLORS[region]);
+  if (legacyMask.data[3] !== 255) throw new Error(`Could not fill ${region} mask`);
+}
+console.log('Validated legacy color-mask persistence, two paint channels, erasing, and filling.');

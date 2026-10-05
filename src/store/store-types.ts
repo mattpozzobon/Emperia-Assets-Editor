@@ -125,6 +125,7 @@ export interface OBState {
   materialMaskBrushSize: number;
   /** Material family currently selected for authoring. */
   activeMaterialMaskKind: MaterialMaskKind;
+  activeColorMaskRegion: 'primary' | 'secondary';
 
   // Actions
   loadFiles: (objBuffer: ArrayBuffer, sprBuffer: ArrayBuffer) => Promise<void>;

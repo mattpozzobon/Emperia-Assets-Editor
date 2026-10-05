@@ -84,7 +84,7 @@ const BASE_OUTFIT_DISPLAY_ID = 134;
 function drawOutfitLayer(
   ctx: CanvasRenderingContext2D,
   objectData: ObjectData, spriteData: SpriteData, spriteOverrides: Map<number, ImageData>,
-  internalId: number, direction: number, colors: { head: number; body: number; legs: number; feet: number },
+  internalId: number, direction: number, colors: { primary: number; secondary: number },
 ): void {
   const thing = objectData.things.get(internalId);
   if (!thing) return;
@@ -150,7 +150,7 @@ function renderCompositeThumb(
   const ctx = canvas.getContext('2d')!;
   ctx.clearRect(0, 0, cellW, cellH);
 
-  const defaultColors = { head: 0, body: 0, legs: 0, feet: 0 };
+  const defaultColors = { primary: 0, secondary: 0 };
 
   // Draw base outfit first
   drawOutfitLayer(ctx, objectData, spriteData, spriteOverrides, baseInternal, direction, defaultColors);
@@ -376,7 +376,7 @@ function HairPreviewCanvas({ outfitDisplayId }: { outfitDisplayId: number }) {
     const ctx = canvas.getContext('2d')!;
     ctx.clearRect(0, 0, cellW, cellH);
 
-    const defaultColors = { head: 0, body: 0, legs: 0, feet: 0 };
+    const defaultColors = { primary: 0, secondary: 0 };
 
     // Draw base outfit
     drawOutfitLayer(ctx, objectData, spriteData, spriteOverrides, baseInternal, 2, defaultColors);

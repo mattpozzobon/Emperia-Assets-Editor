@@ -299,7 +299,7 @@ function renderThing(
 
   const patternX = Math.min(direction, frameGroup.patternX - 1);
   const renderedLayers = isOutfit && frameGroup.layers >= 2 ? 1 : frameGroup.layers;
-  const defaultColors = { head: 0, body: 0, legs: 0, feet: 0 };
+  const defaultColors = { primary: 0, secondary: 0 };
   let rendered = false;
 
   for (let layer = 0; layer < renderedLayers; layer++) {
