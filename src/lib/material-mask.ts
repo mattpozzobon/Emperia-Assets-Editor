@@ -51,6 +51,34 @@ export function fillMaterialMaskFromNonBlackPixels(
   }
 }
 
+/** Rebuilds one region from perceived brightness, preserving other regions. */
+export function fillMaterialMaskFromBrightness(
+  base: ImageData,
+  mask: ImageData,
+  color: number,
+  threshold: number,
+  mode: 'light' | 'dark',
+): void {
+  const red = (color >>> 16) & 0xFF;
+  const green = (color >>> 8) & 0xFF;
+  const blue = color & 0xFF;
+  const cutoff = Math.max(0, Math.min(255, Math.round(threshold)));
+  for (let offset = 0; offset < mask.data.length; offset += 4) {
+    const isSelectedRegion = mask.data[offset] === red
+      && mask.data[offset + 1] === green && mask.data[offset + 2] === blue;
+    if (mask.data[offset + 3] !== 0 && !isSelectedRegion) continue;
+    // Integer weights keep grayscale values exact at the threshold boundary.
+    const brightness = (2126 * base.data[offset] + 7152 * base.data[offset + 1]
+      + 722 * base.data[offset + 2]) / 10000;
+    const matches = offset < base.data.length && base.data[offset + 3] > 0
+      && (mode === 'light' ? brightness >= cutoff : brightness < cutoff);
+    mask.data[offset] = matches ? red : 0;
+    mask.data[offset + 1] = matches ? green : 0;
+    mask.data[offset + 2] = matches ? blue : 0;
+    mask.data[offset + 3] = matches ? 255 : 0;
+  }
+}
+
 /**
  * Returns every sprite used by an appearance outside its semantic material
  * mask layer. IDs also used as masks are excluded so their material colors

@@ -6,7 +6,7 @@ import { COLOR_MASK_COLORS, getColorMaskLayer, paletteToCSS, OUTFIT_PALETTE, PAL
 import type { OutfitColorIndices } from '../lib/outfit-colors';
 import { COLOR_MASK_REGION_LABELS, ensureColorMaskRegion } from '../lib/color-mask-migration';
 import { clearFrameGroupLayer, resizeFrameGroupLayers } from '../lib/frame-group-layout';
-import { collectMaterialBaseSpriteIds, desaturateSprite, fillMaterialMaskFromNonBlackPixels, findSharedMaterialMaskSpriteIds, materialColorToCSS, MATERIAL_MASK_COLORS, remapMaterialMaskSpriteIds } from '../lib/material-mask';
+import { collectMaterialBaseSpriteIds, desaturateSprite, fillMaterialMaskFromBrightness, fillMaterialMaskFromNonBlackPixels, findSharedMaterialMaskSpriteIds, materialColorToCSS, MATERIAL_MASK_COLORS, remapMaterialMaskSpriteIds } from '../lib/material-mask';
 import { MATERIAL_MASK_KINDS } from '../lib/types';
 import type { MaterialMaskKind } from '../lib/types';
 import { ParamField, StepperBtn } from './ui-primitives';
@@ -24,6 +24,8 @@ const MATERIAL_MASK_OPTIONS: { kind: MaterialMaskKind; label: string; color: str
 ];
 
 export function LayerPanel() {
+  const [brightnessThreshold, setBrightnessThreshold] = useState(128);
+  const [brightnessMode, setBrightnessMode] = useState<'light' | 'dark'>('light');
   const selectedId = useOBStore((s) => s.selectedThingId);
   const objectData = useOBStore((s) => s.objectData);
   const spriteData = useOBStore((s) => s.spriteData);
@@ -234,7 +236,7 @@ export function LayerPanel() {
     });
   }, [activeMaterialMaskLayer, spriteData, thing]);
 
-  const createMasksFromNonBlackPixels = useCallback(() => {
+  const createMasksFromPixels = useCallback((byBrightness: boolean) => {
     if (!thing || !spriteData || activeMaterialMaskLayer == null || hasSharedMaterialMasks) return;
 
     const store = useOBStore.getState();
@@ -281,7 +283,11 @@ export function LayerPanel() {
           const mask = existingMask
             ? new ImageData(new Uint8ClampedArray(existingMask.data), existingMask.width, existingMask.height)
             : new ImageData(base.width, base.height);
-          fillMaterialMaskFromNonBlackPixels(base, mask, materialColor);
+          if (byBrightness) {
+            fillMaterialMaskFromBrightness(base, mask, materialColor, brightnessThreshold, brightnessMode);
+          } else {
+            fillMaterialMaskFromNonBlackPixels(base, mask, materialColor);
+          }
           spriteOverrides.set(maskSpriteId, mask);
           dirtySpriteIds.add(maskSpriteId);
           clearSpriteCacheId(maskSpriteId);
@@ -300,9 +306,10 @@ export function LayerPanel() {
       dirtyIds,
       spriteOverrides,
       dirtySpriteIds,
+      ...(byBrightness ? { activeLayer: activeMaterialMaskLayer, blendLayers: false, materialMaskPaintMode: 'paint' as const, selectedSlots: [] } : {}),
       editVersion: store.editVersion + 1,
     });
-  }, [activeMaskColor, activeColorMaskRegion, hasColorMask, activeMaterialMaskLayer, hasSharedMaterialMasks, spriteData, thing]);
+  }, [activeMaskColor, activeColorMaskRegion, hasColorMask, activeMaterialMaskLayer, hasSharedMaterialMasks, spriteData, thing, brightnessThreshold, brightnessMode]);
 
   const updateFrameGroupProp = useCallback((key: string, value: number) => {
     if (!thing || !group) return;
@@ -414,7 +421,7 @@ export function LayerPanel() {
                 </button>
                 <button
                   type="button"
-                  onClick={createMasksFromNonBlackPixels}
+                  onClick={() => createMasksFromPixels(false)}
                   disabled={hasSharedMaterialMasks}
                   className="w-full rounded border border-amber-500/30 bg-amber-950/20 px-2 py-1 text-[9px] text-amber-300 hover:border-amber-400/70 hover:bg-amber-950/35 disabled:cursor-not-allowed disabled:opacity-40"
                   title={hasSharedMaterialMasks
@@ -423,6 +430,34 @@ export function LayerPanel() {
                 >
                   Create Idle + Moving {activeMaterialMaskLabel} masks
                 </button>
+                <div className="space-y-1.5 rounded border border-emperia-border p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-emperia-text">Mask by brightness</span>
+                    <select aria-label="Brightness selection" value={brightnessMode}
+                      onChange={(event) => setBrightnessMode(event.target.value as 'light' | 'dark')}
+                      className="rounded border border-emperia-border bg-emperia-surface text-[9px] text-emperia-text">
+                      <option value="light">Light pixels</option>
+                      <option value="dark">Dark pixels</option>
+                    </select>
+                  </div>
+                  <label className="flex items-center gap-2">
+                    <span className="text-emperia-muted">Threshold</span>
+                    <input type="range" min={0} max={255} value={brightnessThreshold}
+                      onChange={(event) => setBrightnessThreshold(Number(event.target.value))}
+                      className="min-w-0 flex-1 accent-amber-500" />
+                    <span className="w-6 text-right font-mono text-emperia-text">{brightnessThreshold}</span>
+                  </label>
+                  <p className="text-[8px] leading-relaxed text-emperia-muted">
+                    {brightnessMode === 'light' ? `Brightness ≥ ${brightnessThreshold}` : `Brightness < ${brightnessThreshold}`} (0 = black, 255 = white).
+                    {' '}Replaces {activeMaterialMaskLabel} in all groups, directions and frames. Other painted regions are preserved.
+                  </p>
+                  <button type="button" onClick={() => createMasksFromPixels(true)}
+                    disabled={!spriteData || hasSharedMaterialMasks}
+                    title={hasSharedMaterialMasks ? 'Make masks unique before generating by brightness' : 'Apply the threshold and show the generated mask'}
+                    className="w-full rounded border border-amber-500/30 bg-amber-950/20 px-2 py-1 text-[9px] text-amber-300 hover:border-amber-400/70 disabled:cursor-not-allowed disabled:opacity-40">
+                    Apply brightness to {activeMaterialMaskLabel}
+                  </button>
+                </div>
                 <div className="flex items-center gap-1">
                   <span className="mr-auto text-emperia-muted">Edit mask</span>
                   <button

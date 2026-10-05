@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const { performance } = require('node:perf_hooks');
 require('../../Emperia-Client/scripts/test-support/register-client-typescript.cjs');
-const { writeOutfit, writeOutfitSlot, getOutfitWireSize } = require('../../Emperia-Server/src/platform/protocol/outfit-wire-format.ts');
+const { writeOutfit, writeOutfitSlot, getOutfitWireSize } = require('../../Emperia-Server/src/platform/protocol/serialization/outfit-wire-format.ts');
 const { applyItemAppearanceReaders } = require('../../Emperia-Client/client/src/engine/network/readers/item-appearance-readers.ts');
 const proto = {};
 applyItemAppearanceReaders(proto);
@@ -50,6 +50,22 @@ assert.equal(written,getOutfitWireSize(sparse));
 assert.equal(proto.readOutfit.call(reader).sprites[8].sourceVisualEquipmentId,65535);
 assert.equal(read,written);
 written=0;writeOutfit(writer,sparse,0);assert.equal(written,4);
+
+// Optional exact RGB dye must survive every metadata/colour combination.
+for (const maskPrimary of [undefined, 0, 0xFFFFFF, 1, 0x123456, 0xFF0000, 0xFFFFFE])
+ for (const colors of [undefined, {primary:22, secondary:22}, {primary:22, secondary:58}])
+ for (const metadata of [false,true]) for(const maskSecondary of [undefined,0,0xABCDEF,maskPrimary]) {
+  const slot = { id:321, maskPrimary, maskSecondary, colors, ...(metadata ? {rarity:2,level:8,materialId:7,materialComposition:0x123456} : {}) };
+  const outfit = {...empty, sprites:empty.sprites.map((s,i)=>i===1?slot:s)};
+  written=read=0; writeOutfit(writer,outfit);
+  assert.equal(written,getOutfitWireSize(outfit));
+  const size=written; writer.writeUInt16(0xBEEF);
+  const decoded=proto.readOutfit.call(reader).sprites[1];
+  assert.equal(decoded.maskPrimary,maskPrimary && maskPrimary!==0xFFFFFF ? maskPrimary : undefined);
+  assert.equal(decoded.maskSecondary,maskSecondary != null && maskSecondary !== (maskPrimary ?? 0xFFFFFF) ? maskSecondary : undefined);
+  if(colors) assert.deepEqual(decoded.colors,colors);
+  assert.equal(read,size); assert.equal(reader.readUInt16(),0xBEEF);
+ }
 
 function oldWrite(writer,outfit,mask=511) {
  writer.writeUInt16(outfit.id);writer.writeUInt8(Number(outfit.renderHelmet));

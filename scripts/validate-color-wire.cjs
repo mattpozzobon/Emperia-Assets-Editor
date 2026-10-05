@@ -1,8 +1,8 @@
 const assert = require('node:assert/strict');
 require('../../Emperia-Client/scripts/test-support/register-client-typescript.cjs');
-const { writeOutfitSlot, getOutfitSlotWireSize } = require('../../Emperia-Server/src/platform/protocol/outfit-wire-format.ts');
+const { writeOutfitSlot, getOutfitSlotWireSize } = require('../../Emperia-Server/src/platform/protocol/serialization/outfit-wire-format.ts');
 const { readOutfitColors } = require('../../Emperia-Client/client/src/engine/network/outfit-color-codec.ts');
-const flags = require('../../Emperia-Server/src/platform/protocol/protocol-contract.generated.ts');
+const flags = require('../../Emperia-Server/src/platform/protocol/generated/protocol-contract.generated.ts');
 const clientFlags = require('../../Emperia-Client/client/src/engine/network/protocol-contract.generated.ts');
 assert.equal(flags.ENTITY_UPDATE_PROTOCOL_VERSION, clientFlags.ENTITY_UPDATE_PROTOCOL_VERSION);
 const colorsList = [undefined];
