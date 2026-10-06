@@ -4,11 +4,11 @@
  */
 import PacketWriter from './packet-writer';
 import { EMPERIA_MAGIC, EmperiaFileType } from './emperia-format';
-import type { ObjectData, ThingFlags, FrameGroup, EquipmentAppearance, HairDefinition, ItemSeatDefinition } from './types';
+import type { ObjectData, ThingFlags, FrameGroup, EquipmentAppearance, HairDefinition, BeardDefinition, ItemSeatDefinition } from './types';
 import { encodeItemSlotType } from './item-slot-types';
 import { encodeItemIdentity } from './item-identity-codec';
 
-const EOBJ_FORMAT_VERSION = 16;
+const EOBJ_FORMAT_VERSION = 17;
 
 const ATTR = {
   ThingAttrGround: 0,
@@ -157,6 +157,7 @@ export function compileObjectData(
   equipmentAppearances: Map<number, EquipmentAppearance> = data.equipmentAppearances,
   hairDefinitions: Map<number, HairDefinition> = data.hairDefinitions,
   itemSeatDefinitions: Map<number, ItemSeatDefinition> = data.itemSeatDefinitions,
+  beardDefinitions: Map<number, BeardDefinition> = data.beardDefinitions ?? new Map(),
 ): ArrayBuffer {
   const w = new PacketWriter(1024 * 1024); // 1MB initial
 
@@ -185,6 +186,7 @@ export function compileObjectData(
   w.writeUInt16(data.hairCount);
   w.writeUInt16(data.effectCount);
   w.writeUInt16(data.distanceCount);
+  w.writeUInt16(data.beardCount ?? 0);
 
   const mappings = Array.from(itemAppearances.entries()).sort(([a], [b]) => a - b);
   w.writeUInt32(mappings.length);
@@ -322,6 +324,23 @@ export function compileObjectData(
     w.writeString(hair.name);
   }
 
+  const beards = Array.from(beardDefinitions.values()).sort((a, b) => a.beardId - b.beardId);
+  if (beards.length > 0xFFFF) throw new Error('Beard catalog exceeds the UInt16 entry limit');
+  w.writeUInt16(beards.length);
+  for (const beard of beards) {
+    if (!Number.isInteger(beard.beardId) || beard.beardId < 1 || beard.beardId > 0xFFFF
+      || !Number.isInteger(beard.appearanceId) || beard.appearanceId < 0 || beard.appearanceId >= (data.beardCount ?? 0)) {
+      throw new Error(`Beard ${beard.beardId} references an invalid appearance`);
+    }
+    w.writeUInt16(beard.beardId);
+    w.writeUInt16(beard.appearanceId);
+    w.writeUInt8(beard.races);
+    w.writeUInt8(beard.genders);
+    w.writeUInt8(beard.tiers);
+    w.writeUInt16(beard.sortOrder);
+    w.writeString(beard.name);
+  }
+
   const seats = Array.from(itemSeatDefinitions.entries()).sort(([a], [b]) => a - b);
   if (seats.length > 0xFFFF) throw new Error('Seat metadata exceeds the UInt16 entry limit');
   w.writeUInt16(seats.length);
@@ -361,7 +380,7 @@ export function compileObjectData(
   w.writeString(JSON.stringify({ poseSets, profiles }));
 
   const totalCount = data.itemCount + data.outfitCount + data.equipmentCount
-    + data.hairCount + data.effectCount + data.distanceCount;
+    + data.hairCount + data.effectCount + data.distanceCount + (data.beardCount ?? 0);
 
   for (let id = 100; id <= totalCount; id++) {
     const thing = data.things.get(id);
@@ -387,7 +406,7 @@ export function compileObjectData(
     // Re-serialize from parsed data for edited things
     writeFlags(w, thing.flags, data.version);
 
-    const isLayeredAppearance = thing.category === 'outfit' || thing.category === 'equipment' || thing.category === 'hair';
+    const isLayeredAppearance = thing.category === 'outfit' || thing.category === 'equipment' || thing.category === 'hair' || thing.category === 'beard';
     const hasFrameGroups = data.version >= 1050 && isLayeredAppearance;
 
     if (hasFrameGroups) {

@@ -121,7 +121,7 @@ for (const thing of objects.things.values()) {
 
 const report = {
   schemaVersion: 1,
-  status: 'eobj-v16-compatible-with-region-aware-client',
+  status: 'eobj-v17-compatible-with-region-aware-client',
   source,
   sourceHashes: { objects: hash(new Uint8Array(sourceObjects)), sprites: hash(new Uint8Array(sourceSprites)) },
   regionOrder: ['primary', 'secondary', 'tertiary', 'quaternary'],
@@ -141,7 +141,7 @@ for (const name of Object.keys(sourceManifest.files)) {
 fs.writeFileSync(path.join(destination, 'emperia.eobj'), objectBytes);
 fs.writeFileSync(path.join(destination, 'emperia.espr'), new Uint8Array(await gzipCompress(spriteBytes.buffer)));
 fs.writeFileSync(path.join(destination, 'color-mask-migration.json'), JSON.stringify(report, null, 2) + '\n');
-fs.writeFileSync(path.join(destination, 'MIGRATION-NOTES.txt'), 'EOBJ v16 — deploy with the matching client, server and data editor.\nThe embedded colorMaskSources table maps normalized regions to saved legacy palette values after fallback resolution. Do not rewrite saved colors: doing so would apply the migration twice.\nUnrecognized layers are preserved and listed in color-mask-migration.json. Original sprite IDs are retained to protect shared references.\n');
+fs.writeFileSync(path.join(destination, 'MIGRATION-NOTES.txt'), 'EOBJ v17 — deploy with the matching client, server and data editor.\nThe embedded colorMaskSources table maps normalized regions to saved legacy palette values after fallback resolution. Do not rewrite saved colors: doing so would apply the migration twice.\nUnrecognized layers are preserved and listed in color-mask-migration.json. Original sprite IDs are retained to protect shared references.\n');
 const files = Object.fromEntries(Object.keys(sourceManifest.files).sort().map(name => {
   const bytes = fs.readFileSync(path.join(destination, name));
   return [name, { sha256: hash(bytes), size: bytes.byteLength }];

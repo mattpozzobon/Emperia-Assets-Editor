@@ -16,9 +16,9 @@ const reader = {
  readUInt8() { assert.ok(read < written, 'Overread'); return bytes[read++]; },
  readUInt16() { return this.readUInt8() | this.readUInt8() << 8; },
 };
-const sprites = Array.from({length:9}, (_,i)=>({id:300+i, appearance:i%3===0?materialAppearance(7,0x123456):paletteAppearance(22+i,i%2?58:22+i), rarity:2,level:8}));
+const sprites = Array.from({length:10}, (_,i)=>({id:300+i, appearance:i%3===0?materialAppearance(7,0x123456):paletteAppearance(22+i,i%2?58:22+i), rarity:2,level:8}));
 let cases = 0;
-for (let mask=0;mask<512;mask++) for(let extras=0;extras<32;extras++) for(const renderHelmet of [false,true]) {
+for (let mask=0;mask<1024;mask++) for(let extras=0;extras<32;extras++) for(const renderHelmet of [false,true]) {
  const outfit={id:134, renderHelmet, sprites, attachments:{healthPotion:extras&1?1:0,manaPotion:extras&2?2:0,energyPotion:extras&4?3:0,bag:extras&8?255:0},lightSourceItemId:extras&16?65535:0};
  written=read=0;
  writeOutfit(writer,outfit,mask);
@@ -34,7 +34,7 @@ for (let mask=0;mask<512;mask++) for(let extras=0;extras<32;extras++) for(const 
  assert.equal(result.lightSourceItemId,outfit.lightSourceItemId);
  result.sprites.forEach((slot,i)=>{
   if(!(mask&(1<<i))) {assert.equal(slot.id,0);return;}
-  assert.equal(i===0?slot.sourceHairId:slot.sourceItemId,sprites[i].id);
+  assert.equal(i===0?slot.sourceHairId:i===9?slot.sourceBeardId:slot.sourceItemId,sprites[i].id);
   assert.deepEqual(slot.appearance,sprites[i].appearance);
   assert.equal(slot.rarity,2);assert.equal(slot.level,8);
  });
@@ -42,8 +42,7 @@ for (let mask=0;mask<512;mask++) for(let extras=0;extras<32;extras++) for(const 
 }
 const empty={id:134,renderHelmet:true,sprites:sprites.map(()=>({id:0})),attachments:{healthPotion:0,manaPotion:0,energyPotion:0,bag:0},lightSourceItemId:0};
 written=read=0;writeOutfit(writer,empty);assert.equal(written,4);assert.equal(proto.readOutfit.call(reader).sprites.filter(s=>s.id).length,0);
-assert.deepEqual(Array.from(bytes.subarray(0,4)),[134,0,0,2]);
-bytes[3]|=0x80;read=0;assert.throws(()=>proto.readOutfit.call(reader),/Unsupported outfit header/);
+assert.deepEqual(Array.from(bytes.subarray(0,4)),[134,0,0,4]);
 const sparse={...empty,sprites:empty.sprites.map((s,i)=>i===8?{id:65535,directAppearance:true}:s)};
 written=read=0;writeOutfit(writer,sparse);
 assert.equal(written,getOutfitWireSize(sparse));

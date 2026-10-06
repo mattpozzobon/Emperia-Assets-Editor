@@ -90,6 +90,7 @@ export function SpritePreview() {
     category === 'outfit'
     || category === 'equipment'
     || category === 'hair'
+    || category === 'beard'
   );
   const isEffect = category === 'effect';
   const isDistance = category === 'distance';

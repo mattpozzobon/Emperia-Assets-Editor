@@ -48,6 +48,7 @@ export function LayerPanel({ section = 'details' }: { section?: 'masks' | 'detai
     category === 'outfit'
     || category === 'equipment'
     || category === 'hair'
+    || category === 'beard'
   );
   const isEffect = category === 'effect';
   const isItem = category === 'item';
@@ -59,7 +60,7 @@ export function LayerPanel({ section = 'details' }: { section?: 'masks' | 'detai
   const isAnimated = group ? group.animationLength > 1 : false;
   const showOffset = isDirectionalAppearance || isEffect || (thing?.flags.hasDisplacement ?? false);
   const hasColorMask = supportsMaterialMask && getColorMaskLayer(thing) != null;
-  const showColors = (hasColorMask || category === 'hair') && (blendLayers || materialMaskPaintMode != null) && (group?.layers ?? 0) >= 2;
+  const showColors = (hasColorMask || category === 'hair' || category === 'beard') && (blendLayers || materialMaskPaintMode != null) && (group?.layers ?? 0) >= 2;
   const hasMaterialMask = supportsMaterialMask && thing?.materialMaskLayer != null;
   const hasMask = hasMaterialMask || hasColorMask;
   const activeMaterialMaskLayer = thing?.materialMaskLayer ?? (hasColorMask ? 1 : undefined);

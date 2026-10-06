@@ -298,6 +298,7 @@ export function parseObjectData(buffer: ArrayBuffer): ObjectData {
   const hairCount = formatVersion >= 5 ? packet.readUInt16() : 0;
   const effectCount = packet.readUInt16();
   const distanceCount = packet.readUInt16();
+  const beardCount = formatVersion >= 17 ? packet.readUInt16() : 0;
   const itemAppearances = new Map<number, number>();
   if (formatVersion >= 2) {
     const mappingCount = packet.readUInt32();
@@ -352,6 +353,7 @@ export function parseObjectData(buffer: ArrayBuffer): ObjectData {
   const equipmentAppearances = new Map<number, import('./types').EquipmentAppearance>();
   const visualEquipmentAppearances = new Map<number, import('./types').VisualEquipmentAppearance>();
   const hairDefinitions = new Map<number, import('./types').HairDefinition>();
+  const beardDefinitions = new Map<number, import('./types').BeardDefinition>();
   const itemSeatDefinitions = new Map<number, import('./types').ItemSeatDefinition>();
   const poseSets = new Map<number, import('./types').PoseSetDefinition>();
   const seatPoseProfiles = new Map<string, import('./types').SeatPoseProfile>();
@@ -429,6 +431,22 @@ export function parseObjectData(buffer: ArrayBuffer): ObjectData {
         sortOrder: packet.readUInt16(),
         name: packet.readString(),
       });
+    }
+
+    if (formatVersion >= 17) {
+      const beardDefinitionCount = packet.readUInt16();
+      for (let index = 0; index < beardDefinitionCount; index++) {
+        const beardId = packet.readUInt16();
+        beardDefinitions.set(beardId, {
+          beardId,
+          appearanceId: packet.readUInt16(),
+          races: packet.readUInt8(),
+          genders: packet.readUInt8(),
+          tiers: packet.readUInt8(),
+          sortOrder: packet.readUInt16(),
+          name: packet.readString(),
+        });
+      }
     }
 
     if (formatVersion >= 7) {
@@ -524,7 +542,7 @@ export function parseObjectData(buffer: ArrayBuffer): ObjectData {
       }
     }
   }
-  const totalCount = itemCount + outfitCount + equipmentCount + hairCount + effectCount + distanceCount;
+  const totalCount = itemCount + outfitCount + equipmentCount + hairCount + effectCount + distanceCount + beardCount;
 
   const things = new Map<number, ThingType>();
 
@@ -537,7 +555,8 @@ export function parseObjectData(buffer: ArrayBuffer): ObjectData {
     const equipmentEnd = outfitEnd + equipmentCount;
     const hairEnd = equipmentEnd + hairCount;
     const effectEnd = hairEnd + effectCount;
-    const isLayeredAppearance = id > itemCount && id <= hairEnd;
+    const distanceEnd = effectEnd + distanceCount;
+    const isLayeredAppearance = id > itemCount && (id <= hairEnd || id > distanceEnd);
     const hasFrameGroups = version >= 1050 && isLayeredAppearance;
     const groupCount = hasFrameGroups ? packet.readUInt8() : 1;
 
@@ -555,7 +574,8 @@ export function parseObjectData(buffer: ArrayBuffer): ObjectData {
     else if (id <= equipmentEnd) category = 'equipment';
     else if (id <= hairEnd) category = 'hair';
     else if (id <= effectEnd) category = 'effect';
-    else category = 'distance';
+    else if (id <= distanceEnd) category = 'distance';
+    else category = 'beard';
 
     const materialMaskLayer = materialMaskLayers.get(id);
     things.set(id, {
@@ -576,6 +596,7 @@ export function parseObjectData(buffer: ArrayBuffer): ObjectData {
     outfitCount,
     equipmentCount,
     hairCount,
+    beardCount,
     effectCount,
     distanceCount,
     itemAppearances,
@@ -588,6 +609,7 @@ export function parseObjectData(buffer: ArrayBuffer): ObjectData {
     equipmentAppearances,
     visualEquipmentAppearances,
     hairDefinitions,
+    beardDefinitions,
     things,
     originalBuffer: buffer,
   };

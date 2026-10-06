@@ -24,7 +24,19 @@ interface FullDirectionalSheetImportOptions {
 
 const DIRECTION_COLUMNS = 4;
 const MAX_FRAME_COUNT = 255;
-const SUPPORTED_CATEGORIES = new Set(['equipment', 'hair', 'outfit']);
+const SUPPORTED_CATEGORIES = new Set(['equipment', 'hair', 'beard', 'outfit']);
+
+/** A single-layer beard sheet tints every visible pixel with the hair's primary colour. */
+export function buildBeardColorMaskPixels(source: Uint8ClampedArray): Uint8ClampedArray {
+  const mask = new Uint8ClampedArray(source.length);
+  for (let offset = 0; offset < source.length; offset += 4) {
+    if (source[offset + 3] === 0) continue;
+    mask[offset] = 255;
+    mask[offset + 1] = 255;
+    mask[offset + 3] = 255;
+  }
+  return mask;
+}
 
 const getSpriteIndex = (
   group: FrameGroup,
@@ -66,7 +78,7 @@ export async function importFullDirectionalSheet({
 }: FullDirectionalSheetImportOptions): Promise<FullDirectionalSheetImportResult> {
   const image = await loadImage(file);
   if (!SUPPORTED_CATEGORIES.has(thing.category)) {
-    throw new Error('Select an Equipment, Hair, or Outfit object before importing a directional sheet.');
+    throw new Error('Select an Equipment, Hair, Beard, or Outfit object before importing a directional sheet.');
   }
   if (
     !Number.isInteger(idleFrames)
@@ -87,6 +99,8 @@ export async function importFullDirectionalSheet({
 
   const idle = thing.frameGroups[0];
   if (!idle) throw new Error('The object has no Idle frame group.');
+  const generateBeardMask = thing.category === 'beard' && layers === 1;
+  const outputLayers = generateBeardMask ? 2 : layers;
   const spriteTiles = spriteSize / 32;
   const blockWidth = spriteSize;
   const blockHeight = spriteSize;
@@ -135,7 +149,7 @@ export async function importFullDirectionalSheet({
   idle.width = spriteTiles;
   idle.height = spriteTiles;
   idle.exactSizeHint = spriteTiles;
-  idle.layers = layers;
+  idle.layers = outputLayers;
   idle.patternX = DIRECTION_COLUMNS;
   idle.patternY = 1;
   idle.patternZ = 1;
@@ -175,7 +189,7 @@ export async function importFullDirectionalSheet({
   moving.width = spriteTiles;
   moving.height = spriteTiles;
   moving.exactSizeHint = spriteTiles;
-  moving.layers = layers;
+  moving.layers = outputLayers;
   moving.patternX = DIRECTION_COLUMNS;
   moving.patternY = 1;
   moving.patternZ = 1;
@@ -198,6 +212,7 @@ export async function importFullDirectionalSheet({
     while (moving.sprites.length < movingSlotCount) moving.sprites.push(0);
   }
   thing.frameGroups = [idle, moving];
+  if (thing.category === 'beard' && outputLayers > 1) thing.colorMaskSources = [0];
 
   const tileCanvas = document.createElement('canvas');
   tileCanvas.width = 32;
@@ -239,6 +254,11 @@ export async function importFullDirectionalSheet({
         const ty = targetGroup.height - 1 - visualRow;
         const index = getSpriteIndex(targetGroup, frame, targetDirection, targetLayer, tx, ty);
         if (index < targetGroup.sprites.length) assignSprite(targetGroup, index, tileData);
+        if (generateBeardMask) {
+          const maskIndex = getSpriteIndex(targetGroup, frame, targetDirection, 1, tx, ty);
+          const maskData = new ImageData(buildBeardColorMaskPixels(tileData.data), 32, 32);
+          if (maskIndex < targetGroup.sprites.length) assignSprite(targetGroup, maskIndex, maskData);
+        }
       }
     }
   };
@@ -269,5 +289,5 @@ export async function importFullDirectionalSheet({
   }
 
   thing.rawBytes = undefined;
-  return { idleFrames, movingFrames, layers };
+  return { idleFrames, movingFrames, layers: outputLayers };
 }

@@ -653,8 +653,8 @@ export async function runCompile(
       od.itemSeatDefinitions,
     );
     reparsedObject = parseObjectData(buf);
-    if (reparsedObject.formatVersion !== 16) {
-      throw new Error(`Generated EOBJ v${reparsedObject.formatVersion}; expected v16.`);
+    if (reparsedObject.formatVersion !== 17) {
+      throw new Error(`Generated EOBJ v${reparsedObject.formatVersion}; expected v17.`);
     }
     if (reparsedObject.itemAppearances.size !== itemAppearances.size) {
       throw new Error('Generated EOBJ item mapping is incomplete.');
@@ -675,6 +675,9 @@ export async function runCompile(
     }
     if (reparsedObject.hairDefinitions.size !== hairDefinitions.size) {
       throw new Error('Generated EOBJ hair catalog is incomplete.');
+    }
+    if (reparsedObject.beardDefinitions.size !== od.beardDefinitions.size || reparsedObject.beardCount !== od.beardCount) {
+      throw new Error('Generated EOBJ beard catalog is incomplete.');
     }
     if (reparsedObject.itemSeatDefinitions.size !== od.itemSeatDefinitions.size) {
       throw new Error('Generated EOBJ seat metadata is incomplete.');

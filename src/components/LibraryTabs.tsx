@@ -11,6 +11,7 @@ const CATEGORIES: { key: LibraryCategory; label: string; icon: typeof Package }[
   { key: 'distance', label: 'Distance', icon: ArrowRight },
   { key: 'equipment', label: 'Equipment', icon: Swords },
   { key: 'hair', label: 'Hair', icon: Scissors },
+  { key: 'beard', label: 'Beard', icon: Scissors },
 ];
 
 export function LibraryTabs() {
@@ -33,6 +34,7 @@ export function LibraryTabs() {
       case 'distance': return objectData.distanceCount;
       case 'equipment': return objectData.equipmentCount;
       case 'hair': return objectData.hairCount;
+      case 'beard': return objectData.beardCount;
       case 'market': return Array.from(appearanceToItemIds.entries()).filter(([appearanceId, itemId]) => (
         objectData.things.has(appearanceId)
         && (readItemProperty(itemDefinitions.get(itemId)?.properties, 'marketable') === true

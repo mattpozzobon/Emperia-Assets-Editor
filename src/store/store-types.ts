@@ -1,7 +1,7 @@
 /**
  * Shared types for the OB Zustand store.
  */
-import type { ObjectData, SpriteData, ThingType, ThingCategory, LibraryCategory, ThingFlags, FrameGroup, ItemDefinition, EquipmentCatalogEntry, HairDefinition, ItemSeatDefinition, SeatPoseProfile, PoseAction, ItemLocale, ItemLocalizedText, ItemCatalogFile, MaterialMaskKind } from '../lib/types';
+import type { ObjectData, SpriteData, ThingType, ThingCategory, LibraryCategory, ThingFlags, FrameGroup, ItemDefinition, EquipmentCatalogEntry, HairDefinition, BeardDefinition, ItemSeatDefinition, SeatPoseProfile, PoseAction, ItemLocale, ItemLocalizedText, ItemCatalogFile, MaterialMaskKind } from '../lib/types';
 import type { OutfitColorIndices } from '../lib/outfit-colors';
 
 export interface UndoEntry {
@@ -53,6 +53,7 @@ export interface OBState {
 
   /** Currently selected hair ID in the Hair tab */
   selectedHairId: number | null;
+  selectedBeardId: number | null;
 
   // File System Access API: handles for saving back to source files
   sourceDir: FileSystemDirectoryHandle | null;
@@ -66,7 +67,7 @@ export interface OBState {
   };
 
   // UI state
-  centerTab: 'texture' | 'properties' | 'localization' | 'equipment' | 'hair' | 'poseLab';
+  centerTab: 'texture' | 'properties' | 'localization' | 'equipment' | 'hair' | 'beard' | 'poseLab';
   activeCategory: ThingCategory;
   activeLibrary: LibraryCategory;
   selectedThingId: number | null;
@@ -198,6 +199,11 @@ export interface OBState {
   removeHairDefinition: (hairId: number) => void;
   duplicateHairDefinition: (hairId: number) => void;
   setSelectedHairId: (id: number | null) => void;
+  addBeardDefinition: (beard: BeardDefinition) => void;
+  updateBeardDefinition: (beardId: number, data: Partial<BeardDefinition>) => void;
+  removeBeardDefinition: (beardId: number) => void;
+  duplicateBeardDefinition: (beardId: number) => void;
+  setSelectedBeardId: (id: number | null) => void;
 
   // Derived
   getCategoryRange: (cat: ThingCategory) => { start: number; end: number } | null;

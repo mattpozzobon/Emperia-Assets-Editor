@@ -256,8 +256,8 @@ export function PreviewToolbar({
         </>
       )}
 
-      {/* Base #134 is available for both outfit and equipment previews. */}
-      {(category === 'outfit' || category === 'equipment') && objectData && (
+      {/* Directional appearances can preview against character #134 or a pinned appearance. */}
+      {(category === 'outfit' || category === 'equipment' || category === 'hair' || category === 'beard') && objectData && (
         <>
           <div className="flex items-center gap-0.5">
             {baseOutfitId != null && baseOutfitId !== thing.id && (
@@ -277,15 +277,13 @@ export function PreviewToolbar({
                 </button>
               );
             })()}
-            {category === 'outfit' && (
-              <button
-                onClick={() => setBaseOutfitId(baseOutfitId === thing.id ? null : thing.id)}
-                className={`p-1 rounded transition-colors ${baseOutfitId === thing.id ? 'bg-amber-500/20 text-amber-400' : baseOutfitId != null ? 'bg-amber-500/10 text-amber-400/60 hover:text-amber-400 hover:bg-amber-500/20' : 'text-emperia-muted hover:text-emperia-text hover:bg-emperia-hover'}`}
-                title={baseOutfitId === thing.id ? 'Unpin base outfit' : baseOutfitId != null ? 'Replace pinned base with this outfit' : 'Pin current as base outfit'}
-              >
-                {baseOutfitId === thing.id ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
-              </button>
-            )}
+            <button
+              onClick={() => setBaseOutfitId(baseOutfitId === thing.id ? null : thing.id)}
+              className={`p-1 rounded transition-colors ${baseOutfitId === thing.id ? 'bg-amber-500/20 text-amber-400' : baseOutfitId != null ? 'bg-amber-500/10 text-amber-400/60 hover:text-amber-400 hover:bg-amber-500/20' : 'text-emperia-muted hover:text-emperia-text hover:bg-emperia-hover'}`}
+              title={baseOutfitId === thing.id ? 'Unpin current base' : baseOutfitId != null ? 'Replace pinned base with this appearance' : 'Pin current appearance as base'}
+            >
+              {baseOutfitId === thing.id ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
+            </button>
           </div>
         </>
       )}

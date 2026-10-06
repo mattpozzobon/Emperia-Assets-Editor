@@ -12,6 +12,7 @@ import { ObjectSlots } from './components/ObjectSlots';
 import { LayerPanel } from './components/LayerPanel';
 import { EquipmentCatalogEditor } from './components/EquipmentCatalogEditor';
 import { HairEditor } from './components/HairEditor';
+import { BeardEditor } from './components/BeardEditor';
 import { PoseLab } from './components/PoseLab';
 import { LocalizationEditor } from './components/LocalizationEditor';
 
@@ -240,10 +241,10 @@ export default function App() {
               </div>
             </div>
           )}
-          {activeLibrary === 'hair' && centerTab !== 'poseLab' && (
+          {(activeLibrary === 'hair' || activeLibrary === 'beard') && centerTab !== 'poseLab' && (
             <div className="flex items-center border-b border-emperia-border shrink-0">
               {([
-                { key: 'hair', label: 'Information' },
+                { key: activeLibrary, label: 'Information' },
                 { key: 'texture', label: 'Texture' },
               ] as const).map((tab) => (
                 <button
@@ -275,6 +276,7 @@ export default function App() {
             {activeLibrary === 'item' && centerTab === 'localization' && <LocalizationEditor />}
             {activeLibrary === 'equipment' && centerTab === 'equipment' && <EquipmentCatalogEditor />}
             {activeLibrary === 'hair' && centerTab === 'hair' && <HairEditor />}
+            {activeLibrary === 'beard' && centerTab === 'beard' && <BeardEditor />}
             {centerTab === 'poseLab' && <PoseLab />}
           </div>
         </div>

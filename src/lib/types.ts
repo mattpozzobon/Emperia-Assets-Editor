@@ -3,7 +3,7 @@
  * Standalone — no game dependencies.
  */
 
-export type ThingCategory = 'item' | 'outfit' | 'equipment' | 'hair' | 'effect' | 'distance';
+export type ThingCategory = 'item' | 'outfit' | 'equipment' | 'hair' | 'effect' | 'distance' | 'beard';
 export type LibraryCategory = ThingCategory | 'market';
 
 export enum MaterialMaskKind {
@@ -96,6 +96,8 @@ export interface ObjectData {
   outfitCount: number;
   equipmentCount: number;
   hairCount: number;
+  /** Beard appearances are appended after distance effects to preserve existing IDs. */
+  beardCount: number;
   effectCount: number;
   distanceCount: number;
   /** Public item ID -> internal sequential appearance ID, embedded in EOBJ. */
@@ -118,6 +120,7 @@ export interface ObjectData {
   visualEquipmentAppearances: Map<number, VisualEquipmentAppearance>;
   /** Stable hair ID -> zero-based hair appearance and eligibility metadata. */
   hairDefinitions: Map<number, HairDefinition>;
+  beardDefinitions: Map<number, BeardDefinition>;
   things: Map<number, ThingType>;
   /** The entire original file buffer for lossless round-trip */
   originalBuffer: ArrayBuffer;
@@ -560,5 +563,16 @@ export interface HairDefinition {
   /** Bitmask of allowed account tiers (HairTier flags). */
   tiers: number;
   /** Sort order for display (lower = first). */
+  sortOrder: number;
+}
+
+/** Stable beard selection with its own visual appearance. Colour comes from hair. */
+export interface BeardDefinition {
+  beardId: number;
+  name: string;
+  appearanceId: number;
+  races: number;
+  genders: number;
+  tiers: number;
   sortOrder: number;
 }

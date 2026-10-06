@@ -54,11 +54,12 @@ const defaultRowAssignments = (
 });
 
 const supportsFullSheetImport = (category?: string) => (
-  category === 'equipment' || category === 'hair' || category === 'outfit'
+  category === 'equipment' || category === 'hair' || category === 'beard' || category === 'outfit'
 );
 
 const categoryLabel = (category?: string) => {
   if (category === 'hair') return 'Hair';
+  if (category === 'beard') return 'Beard';
   if (category === 'outfit') return 'Outfit';
   return 'Equipment';
 };
@@ -191,7 +192,7 @@ export function ThingSpriteGrid() {
   const handleFullSheetImport = useCallback(async (file: File | null) => {
     if (!file) return;
     if (!thing || !spriteData || !supportsFullSheetImport(thing.category)) {
-      alert('Select an Equipment, Hair, or Outfit object before importing a directional sheet.');
+      alert('Select an Equipment, Hair, Beard, or Outfit object before importing a directional sheet.');
       return;
     }
 
@@ -715,7 +716,7 @@ export function ThingSpriteGrid() {
               onClick={() => setShowFullSheetConfig((visible) => !visible)}
               disabled={!thing || !supportsFullSheetImport(thing.category)}
               className="flex items-center gap-1 rounded border border-emperia-accent/40 bg-emperia-accent/10 px-1.5 py-1 text-[10px] font-medium text-emperia-accent transition-colors hover:border-emperia-accent hover:bg-emperia-accent/20 disabled:cursor-default disabled:opacity-30"
-              title="Import a 32x32 or 64x64 directional sheet for Equipment, Hair, or Outfit"
+              title="Import a 32x32 or 64x64 directional sheet for Equipment, Hair, Beard, or Outfit"
             >
               <Images className="w-3.5 h-3.5" />
               <span>Sprite Sheet</span>
@@ -1078,6 +1079,9 @@ export function ThingSpriteGrid() {
                 className="w-14 rounded border border-emperia-border bg-emperia-surface px-1.5 py-1 text-center text-[11px] text-emperia-text outline-none focus:border-emperia-accent"
               />
             </label>
+            {thing?.category === 'beard' && fullSheetLayers === 1 && (
+              <span className="text-[10px] text-emperia-muted">Hair-colour mask generated automatically</span>
+            )}
             <span className={`ml-auto text-[10px] font-medium ${fullSheetMappingValid ? 'text-green-400' : 'text-red-400'}`}>
               Image {fullSheetPreview.width}x{fullSheetPreview.height}px ·{' '}
               {fullSheetSourceColumnCount > 0 && fullSheetSourceRowCount > 0

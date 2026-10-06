@@ -40,6 +40,11 @@ export function ThingGrid() {
     () => Array.from(objectData?.hairDefinitions.values() ?? []),
     [objectData, editVersion],
   );
+  const beardDefinitions = useMemo(
+    () => Array.from(objectData?.beardDefinitions.values() ?? []),
+    [objectData, editVersion],
+  );
+  const setSelectedBeardId = useOBStore((s) => s.setSelectedBeardId);
   const equipmentLinksByAppearance = useMemo(() => {
     const links = new Map<number, number[]>();
     for (const [itemId, appearance] of objectData?.equipmentAppearances ?? []) {
@@ -249,6 +254,7 @@ export function ThingGrid() {
               thing.category === 'outfit'
               || thing.category === 'equipment'
               || thing.category === 'hair'
+              || thing.category === 'beard'
             ) && (previewGroup?.patternX ?? 0) > 2;
             const previewDirection = facesSouth ? 2 : 0;
             let previewFrame = 0;
@@ -372,6 +378,10 @@ export function ThingGrid() {
                 if (activeLibrary === 'hair' && objectData) {
                   const hair = hairDefinitions.find((entry) => entry.appearanceId === getDisplayId(objectData, thing.id));
                   if (hair) setSelectedHairId(hair.hairId);
+                }
+                if (activeLibrary === 'beard' && objectData) {
+                  const beard = beardDefinitions.find((entry) => entry.appearanceId === getDisplayId(objectData, thing.id));
+                  if (beard) setSelectedBeardId(beard.beardId);
                 }
               }
             };

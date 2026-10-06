@@ -10,6 +10,7 @@ import { syncItemFlagsFromVisual, deriveGroup, deriveTopOrder, poseSetProfileKey
 import type { OBState } from './store-types';
 import { shiftThingsDown, allocateThingId, remapSpriteIds } from './thing-helpers';
 import { createHairCatalogSlice } from './hair-catalog-slice';
+import { createBeardCatalogSlice } from './beard-catalog-slice';
 import { createEquipmentCatalogSlice } from './equipment-catalog-slice';
 import { createCompactAtlasAction } from './compact-atlas';
 import { createSpriteGroupSlice } from './sprite-group-slice';
@@ -89,6 +90,7 @@ export const useOBStore = create<OBState>((set, get) => ({
   definitionsLoaded: false,
   itemLocalizations: emptyItemLocalizations(),
   selectedHairId: null,
+  selectedBeardId: null,
   sourceDir: null,
   sourceNames: {},
   sourceHandles: {},
@@ -163,6 +165,8 @@ export const useOBStore = create<OBState>((set, get) => ({
       }
       const embeddedHairDefinitions = Array.from(objectData.hairDefinitions.values())
         .sort((a, b) => a.sortOrder - b.sortOrder || a.hairId - b.hairId);
+      const embeddedBeardDefinitions = Array.from(objectData.beardDefinitions.values())
+        .sort((a, b) => a.sortOrder - b.sortOrder || a.beardId - b.beardId);
       set({
         objectData,
         spriteData,
@@ -192,6 +196,7 @@ export const useOBStore = create<OBState>((set, get) => ({
           ? { itemDefinitions: remappedDefinitions, appearanceToItemIds: remappedAppearanceToItem }
           : { itemDefinitions: new Map(), appearanceToItemIds: new Map(), definitionsLoaded: false }),
         selectedHairId: embeddedHairDefinitions[0]?.hairId ?? null,
+        selectedBeardId: embeddedBeardDefinitions[0]?.beardId ?? null,
       });
     } catch (e) {
       set({
@@ -320,7 +325,7 @@ export const useOBStore = create<OBState>((set, get) => ({
       return;
     }
     get().setActiveCategory(cat);
-    set({ centerTab: cat === 'hair' ? 'hair' : 'texture' });
+    set({ centerTab: cat === 'hair' || cat === 'beard' ? cat : 'texture' });
   },
 
   setSelectedThingId: (id) => set({ selectedThingId: id, selectedThingIds: new Set() }),
@@ -387,6 +392,7 @@ export const useOBStore = create<OBState>((set, get) => ({
       definitionsLoaded: false,
       itemLocalizations: emptyItemLocalizations(),
       selectedHairId: null,
+      selectedBeardId: null,
       sourceHandles: {},
     });
   },
@@ -946,12 +952,13 @@ export const useOBStore = create<OBState>((set, get) => ({
       renderBelowCreatures: false,
     };
 
+    const isBeard = cat === 'beard';
     const defaultFrameGroup = {
-      type: 0, width: 1, height: 1, layers: 1,
-      patternX: 1, patternY: 1, patternZ: 1,
+      type: 0, width: 1, height: 1, layers: isBeard ? 2 : 1,
+      patternX: isBeard ? 4 : 1, patternY: 1, patternZ: 1,
       animationLength: 1, asynchronous: 0, nLoop: 0, start: 0,
       animationLengths: [{ min: 0, max: 0 }],
-      sprites: [0],
+      sprites: isBeard ? Array(8).fill(0) : [0],
     };
 
     const newThing = {
@@ -959,6 +966,7 @@ export const useOBStore = create<OBState>((set, get) => ({
       category: cat,
       flags: defaultFlags,
       frameGroups: [defaultFrameGroup],
+      ...(isBeard ? { colorMaskSources: [0] } : {}),
     };
 
     objectData.things.set(insertId, newThing);
@@ -1023,6 +1031,21 @@ export const useOBStore = create<OBState>((set, get) => ({
       stateUpdate.objectData = { ...objectData, hairDefinitions };
       stateUpdate.selectedHairId = hairId;
     }
+    if (cat === 'beard') {
+      const beardDefinitions = new Map(objectData.beardDefinitions);
+      let beardId = 1;
+      while (beardDefinitions.has(beardId)) beardId++;
+      const sortOrder = Array.from(beardDefinitions.values()).reduce(
+        (highest, beard) => Math.max(highest, beard.sortOrder), -1,
+      ) + 1;
+      beardDefinitions.set(beardId, {
+        beardId, name: `New Beard ${beardId}`,
+        appearanceId: getDisplayId(objectData, insertId),
+        races: HAIR_RACE_ALL, genders: HAIR_GENDER_ALL, tiers: HAIR_TIER_ALL, sortOrder,
+      });
+      stateUpdate.objectData = { ...objectData, beardDefinitions };
+      stateUpdate.selectedBeardId = beardId;
+    }
 
     set(stateUpdate);
 
@@ -1043,7 +1066,7 @@ export const useOBStore = create<OBState>((set, get) => ({
     if (id !== lastId) return;
 
     const oldTotal = objectData.itemCount + objectData.outfitCount + objectData.equipmentCount
-      + objectData.hairCount + objectData.effectCount + objectData.distanceCount;
+      + objectData.hairCount + objectData.effectCount + objectData.distanceCount + objectData.beardCount;
 
     objectData.things.delete(id);
 
@@ -1054,6 +1077,14 @@ export const useOBStore = create<OBState>((set, get) => ({
       case 'hair': objectData.hairCount--; break;
       case 'effect': objectData.effectCount--; break;
       case 'distance': objectData.distanceCount--; break;
+      case 'beard': {
+        const removedAppearanceId = objectData.beardCount - 1;
+        objectData.beardCount--;
+        objectData.beardDefinitions = new Map(
+          Array.from(objectData.beardDefinitions).filter(([, definition]) => definition.appearanceId !== removedAppearanceId),
+        );
+        break;
+      }
     }
 
     // Shift higher-category things down by 1
@@ -1066,6 +1097,9 @@ export const useOBStore = create<OBState>((set, get) => ({
       dirty: true,
       dirtyIds: newDirtyIds,
       selectedThingId: objectData.things.has(newSelected) ? newSelected : null,
+      ...(activeCategory === 'beard' && !objectData.beardDefinitions.has(get().selectedBeardId ?? -1)
+        ? { selectedBeardId: objectData.beardDefinitions.keys().next().value ?? null }
+        : {}),
       editVersion: editVersion + 1,
     });
   },
@@ -1304,6 +1338,7 @@ export const useOBStore = create<OBState>((set, get) => ({
 
   ...createEquipmentCatalogSlice(set, get),
   ...createHairCatalogSlice(set, get),
+  ...createBeardCatalogSlice(set, get),
   ...createCompactAtlasAction(set, get),
   ...createSpriteGroupSlice(set, get),
 
@@ -1340,6 +1375,11 @@ export const useOBStore = create<OBState>((set, get) => ({
         return {
           start: od.itemCount + od.outfitCount + od.equipmentCount + od.hairCount + od.effectCount + 1,
           end: od.itemCount + od.outfitCount + od.equipmentCount + od.hairCount + od.effectCount + od.distanceCount,
+        };
+      case 'beard':
+        return {
+          start: od.itemCount + od.outfitCount + od.equipmentCount + od.hairCount + od.effectCount + od.distanceCount + 1,
+          end: od.itemCount + od.outfitCount + od.equipmentCount + od.hairCount + od.effectCount + od.distanceCount + od.beardCount,
         };
     }
   },

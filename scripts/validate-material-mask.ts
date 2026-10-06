@@ -19,8 +19,8 @@ if (!thing || thing.category !== 'item' || thing.frameGroups.some((group) => gro
 
 thing.materialMaskLayer = 1;
 const roundTrip = parseObjectData(compileObjectData(parsed));
-if (roundTrip.formatVersion !== 16) {
-  throw new Error(`Expected EOBJ v16, received v${roundTrip.formatVersion}`);
+if (roundTrip.formatVersion !== 17) {
+  throw new Error(`Expected EOBJ v17, received v${roundTrip.formatVersion}`);
 }
 if (roundTrip.things.get(appearanceId)?.materialMaskLayer !== 1) {
   throw new Error('Material mask layer did not survive the EOBJ round-trip');
@@ -182,7 +182,7 @@ if (owner.frameGroups[0].sprites[1] === owner.frameGroups[1].sprites[1]) {
   throw new Error('Idle and Moving material masks still share a sprite ID after remapping both groups');
 }
 
-console.log(`Validated EOBJ v16 multi-material mask round-trip for appearance ${appearanceId}.`);
+console.log(`Validated EOBJ v17 multi-material mask round-trip for appearance ${appearanceId}.`);
 
 // The legacy checkbox persists through the existing layer layout, without a new catalog.
 delete thing.materialMaskLayer;
