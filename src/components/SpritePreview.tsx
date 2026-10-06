@@ -76,6 +76,7 @@ export function SpritePreview() {
   const [showDisplacementGuide, setShowDisplacementGuide] = useState(true);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const maskColorPreviewRef = useRef<HTMLCanvasElement>(null);
   const frameTimerRef = useRef<number>(0);
   const latestRenderKeyRef = useRef('');
   const maskPaintingRef = useRef(false);
@@ -92,7 +93,7 @@ export function SpritePreview() {
   );
   const isEffect = category === 'effect';
   const isDistance = category === 'distance';
-  const supportsMaterialMask = category === 'item' || category === 'outfit' || category === 'equipment';
+  const supportsMaterialMask = category === 'item' || isDirectionalAppearance;
   const effectReferenceOutfitId = isEffect && showEffectOutfitReference && objectData
     ? objectData.itemCount + 135
     : null;
@@ -706,6 +707,43 @@ export function SpritePreview() {
     && materialMaskPaintMode,
   );
 
+  // Keep a separate composited preview visible while editing the semantic mask.
+  useEffect(() => {
+    const canvas = maskColorPreviewRef.current;
+    if (!canvas || !canPaintMaterialMask || !group || !spriteData) return;
+    const directions = previewMode ? [Math.min(activeDirection, group.patternX - 1)]
+      : Array.from({ length: group.patternX }, (_, index) => index);
+    const patterns = previewMode ? [Math.min(activePatternY, group.patternY - 1)]
+      : Array.from({ length: group.patternY }, (_, index) => index);
+    canvas.width = group.width * 32 * directions.length;
+    canvas.height = group.height * 32 * patterns.length;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    for (let row = 0; row < patterns.length; row++) {
+      for (let col = 0; col < directions.length; col++) {
+        for (let ty = 0; ty < group.height; ty++) {
+          for (let tx = 0; tx < group.width; tx++) {
+            const baseIndex = getSpriteIndex(group, currentFrame, directions[col], patterns[row], activeZ, 0, tx, ty);
+            const baseId = group.sprites[baseIndex] ?? 0;
+            const base = baseId > 0 ? spriteOverrides.get(baseId) ?? decodeSprite(spriteData, baseId) : null;
+            if (!base) continue;
+            const pixels = new ImageData(new Uint8ClampedArray(base.data), base.width, base.height);
+            const maskIndex = getSpriteIndex(group, currentFrame, directions[col], patterns[row], activeZ, editableMaskLayer!, tx, ty);
+            const maskId = group.sprites[maskIndex] ?? 0;
+            const mask = maskId > 0 ? spriteOverrides.get(maskId) ?? decodeSprite(spriteData, maskId) : null;
+            if (mask) {
+              if (thing?.materialMaskLayer != null) applyMaterialMaskDebugOverlay(pixels, mask);
+              else applyOutfitMask(pixels, mask, outfitColors);
+            }
+            ctx.putImageData(pixels, (col * group.width + group.width - 1 - tx) * 32,
+              (row * group.height + group.height - 1 - ty) * 32);
+          }
+        }
+      }
+    }
+  }, [canPaintMaterialMask, group, spriteData, spriteOverrides, currentFrame, activeDirection,
+    activePatternY, activeZ, previewMode, editableMaskLayer, outfitColors, thing, editVersion]);
+
   const getMaskPaintPoint = useCallback((clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
     if (!canvas || !group) return null;
@@ -721,7 +759,11 @@ export function SpritePreview() {
 
   const paintMaterialMaskAt = useCallback((point: { slotIdx: number; x: number; y: number }) => {
     if (!group || !spriteData || !thing || !materialMaskPaintMode) return;
-    if (thing.materialMaskLayer == null) ensureColorMaskRegion(thing, activeColorMaskRegion);
+    const baseSlot = point.slotIdx - (editableMaskLayer ?? 0) * group.width * group.height;
+    const baseId = group.sprites[baseSlot] ?? 0;
+    const base = baseId > 0
+      ? useOBStore.getState().spriteOverrides.get(baseId) ?? decodeSprite(spriteData, baseId)
+      : null;
     let spriteId = group.sprites[point.slotIdx] ?? 0;
     let source: ImageData | null = null;
     if (spriteId > 0) {
@@ -739,7 +781,13 @@ export function SpritePreview() {
       materialMaskBrushSize,
       (maskStrokeModeRef.current ?? materialMaskPaintMode) === 'erase',
       activeMaskColor,
+      base,
     );
+
+    lastMaskPaintPointRef.current = point;
+    // A stroke outside the base must not allocate a mask or dirty the object.
+    if (imageData.data.every((value, index) => value === (source?.data[index] ?? 0))) return;
+    if (thing.materialMaskLayer == null) ensureColorMaskRegion(thing, activeColorMaskRegion);
 
     if (spriteId > 0) {
       replaceSprite(spriteId, imageData);
@@ -755,7 +803,7 @@ export function SpritePreview() {
     dirtyIds.add(thing.id);
     useOBStore.setState({ dirty: true, dirtyIds });
     lastMaskPaintPointRef.current = point;
-  }, [activeMaskColor, activeColorMaskRegion, addSprite, group, materialMaskBrushSize, materialMaskPaintMode, replaceSprite, spriteData, thing]);
+  }, [activeMaskColor, activeColorMaskRegion, addSprite, group, materialMaskBrushSize, materialMaskPaintMode, replaceSprite, spriteData, thing, editableMaskLayer]);
 
   const handleMaskPointerDown = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
     if (!canPaintMaterialMask) return;
@@ -901,6 +949,18 @@ export function SpritePreview() {
         />
         <span className="text-[10px] text-emperia-muted w-8 text-right">{zoom}x</span>
       </div>
+
+      {canPaintMaterialMask && group && (
+        <div className="flex shrink-0 items-center gap-3 border-b border-emperia-border px-4 py-2">
+          <canvas ref={maskColorPreviewRef} aria-label="Live mask color preview"
+            className="checkerboard rounded border border-emperia-border"
+            style={{ imageRendering: 'pixelated', objectFit: 'contain', width: 144, height: 112 }} />
+          <div className="text-[10px] text-emperia-muted">
+            <p className="text-emperia-text">{thing.materialMaskLayer != null ? 'Material preview' : 'Live color preview'}</p>
+            <p>Updates as you paint. Paint stays inside the base sprite.</p>
+          </div>
+        </div>
+      )}
 
       {/* Sprite preview area */}
       <div

@@ -1,6 +1,6 @@
 # Primary and Secondary colour model
 
-The client, server, data editor and asset editor now use exactly two palette indices: `primary` (yellow mask) and `secondary` (red mask). The renderer no longer tints green/blue mask pixels or remaps a four-value runtime palette. Cache identities, character creation, hair selection, NPC/monster authoring, schemas and persistence all use the two-field model.
+The client, server, data editor and asset editor use exactly two colour regions: `primary` (yellow mask) and `secondary` (red mask). Runtime appearance colours are RGB; palette indices remain a picker and compact transport detail. The renderer no longer tints green/blue mask pixels or remaps a four-value runtime palette. Cache identities, character creation, hair selection, NPC/monster authoring, schemas and persistence all use the two-field model.
 
 ## Assets and authored data
 
@@ -10,7 +10,7 @@ The asset backup is `C:/Dev/Emperia-Assets/current/backup/before-primary-seconda
 
 ## Network
 
-A coloured slot carries two UInt8 palette indices, or one when both indices are equal. An uncoloured slot carries none. The obsolete four-channel sparse encoding was removed. Normal colour payloads shrink from four bytes to two; total slots are five bytes with distinct colours or four with uniform colours, before optional metadata. Protocol versions are world 27, player 18, entity 20, auxiliary 40, item 5 and container 6. Client and server must update together.
+A coloured slot carries two UInt8 palette indices, or one when both indices are equal. An uncoloured slot carries none. The obsolete four-channel sparse encoding was removed. Normal colour payloads shrink from four bytes to two; total slots are five bytes with distinct colours or four with uniform colours, before optional metadata. Current protocol versions live in `Emperia-Server/protocol/realtime-contract.schema.json` and are generated into every consumer. Client and server must update together.
 
 ## Database and rollout
 
@@ -31,16 +31,31 @@ The UInt16 outfit ID is followed by a UInt16 header. Bits 0–8 indicate populat
 
 The size calculator and full writer share the header computation and visit only set slot bits after that computation. No temporary slot arrays or per-write closures are allocated. `npm run validate:compact-outfit` exercises the real client reader against the server writer for all 32,768 slot/extra/helmet combinations with trailing-field boundary checks. Empty outfits shrink from 11 to 4 bytes, a representative five-piece outfit from 33 to 26, and all-slots/all-extras from 105 to 104. A local synthetic benchmark showed effectively unchanged serialization time; this is primarily a bandwidth improvement.
 
-## Item-owned mask colours
+## One appearance model
 
-Player equipment stores exact RGB `maskPrimary` and optional `maskSecondary` on the item. Secondary inherits primary when omitted; equal secondary values are omitted when saving. Attribute 260 keeps existing saved RGB values; attribute 265 stores distinct secondary values. Legacy input aliases are accepted at the persistence boundary, so existing item colours require no SQL copy. Historical primary zero remains the no-dye sentinel; secondary zero is valid black.
+```ts
+type Appearance =
+  | { kind: "material"; materialId: number; composition?: number }
+  | { kind: "color"; primary: number; secondary?: number };
+```
 
-Equipped appearances derive their colours from items. Saved player outfits do not duplicate equipment colours, and owner login derives equipment from item packets. NPCs and hair retain directly authored primary/secondary palette indices. Plain equipment never inherits hair colours. Material IDs remain separate and resolve through the material catalog; they are not converted into colour-mask dyes.
+Items and outfit slots have one optional `appearance` property. Material mode resolves catalog colours, textures and effects. Colour mode uses exact RGB and touches only yellow/red mask pixels; omitted secondary inherits primary. Undefined appearance means no recolouring. Rendering never combines the two modes on an equipment layer.
 
-The client shared mask-colour resolver is used by item textures, equipped sprites, tooltip swatches and data-editor previews. Only yellow/red colour-mask pixels change; unmasked pixels, alpha and material regions remain intact. Texture and visual cache identities include both colours, including equipment transition snapshots.
+The server's `src/shared/appearance.ts` is canonical. The protocol generator copies its platform-independent model and palette helpers into the client; `--check` detects drift. The data editor imports that same model and the client's shared `appearance-renderer.ts`. Inventory textures, equipped sprites, previews and equipment disappearance effects use the same appearance. Texture and loot-group identities include the whole appearance.
 
-Item wire primary uses field bit 6; distinct secondary uses state bit 7 and an RGB UInt24 after material composition. Equipped slots use flags 6 and 7 for primary and distinct secondary RGB. Authored palette selections retain compact palette encoding. Native fixed semantic records are 26 bytes; client, server and the native module must update together.
+Player equipment owns the selection. The local outfit references the decoded item's appearance; saved player outfits retain only hair/base selection, and owner login does not duplicate equipment styling. NPC appearances are assigned directly. The 53 authored JSON colour selections and 15 tutorial selections were converted from palette indices to RGB. The editor still presents palette controls. Historical hair BGR palette values are converted at the boundary so the saved RGB matches the palette preview.
 
-Checks: client `npm run test:item-mask-tint` and `npm run test:equipment-tint`; server `scripts/validation/integration/item-tint-persistence.ts`; asset-editor `node scripts/validate-mask-colors.cjs` checks 60 persistence/wire combinations, while `node scripts/validate-item-tint.cjs` checks real item 5918 mask pixels. `validate:compact-outfit` covers optional RGB fields and packet boundaries. Native assembly tests include distinct secondary and canonical-record validation.
+Item persistence retains numeric attributes 260/265 to preserve saved dye, and material attributes remain available for crafting/gameplay. `getAppearance()` derives exactly one visual mode: explicit dye wins, otherwise material styling. Material metadata is not sent a second time in colour-mode item packets. Old saved hair palettes are converted on read; subsequent saves write `hair.appearance`. No live database rows were rewritten for this refactor.
 
-For a running server that locks `native/dist/emperia-node.node`, stop it before running `node native/scripts/build-embedded.mjs`, then restart the server and reload the client. A validated replacement was staged at `.cache/mask-colors/emperia-node.node`; staging does not update the running process.
+Outfit transport uses existing flags, without a mode string: exact palette matches occupy one or two bytes; arbitrary RGB uses three bytes per distinct colour. Material mode carries only its material ID and optional composition. The native fixed item record layout is unchanged by this refactor. The internal serializer fields are transport details, not parallel application colour properties.
+
+Checks:
+
+- `node scripts/validate-appearance-model.cjs`: shared contract, 399 legacy/new hair save round trips, exclusive schemas and item-owned player appearance.
+- `node scripts/validate-mask-colors.cjs`: 60 item persistence, variable wire and native fixed-record combinations; crafting material survives while colour-mode wire omits it.
+- `node scripts/validate-item-tint.cjs`: item 5918 changes 315 mask pixels and preserves unmasked pixels and alpha.
+- `npm run validate:compact-outfit`: 32,768 envelope combinations and both appearance modes, palette/RGB colours and packet boundaries.
+- Client `test:item-mask-tint` and `test:equipment-tint`: matching inventory/equipped material and colour pixels, cache changes, equipment replacement, transition snapshots and tooltip swatches.
+- Data-editor NPC and monster save/load tests, plus client/server/editor type checks and builds.
+
+Restart the server and reload the client and data editor together after updating. If the previous native-module migration has not been installed yet, stop the server before `node native/scripts/build-embedded.mjs`; the current appearance refactor adds no new fixed-record layout.

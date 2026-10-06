@@ -17,7 +17,7 @@ const bytes=[];writer.writeUInt8=x=>bytes.push(x&255);writer.writeUInt16=x=>byte
 writer.writeVarUInt=x=>{do{let b=x&127;x>>>=7;bytes.push(b|(x?128:0));}while(x);};
 writer.writeItem(saved);let offset=0;
 reader.readUInt8=()=>bytes[offset++];reader.readUInt16=()=>reader.readUInt8()|reader.readUInt8()<<8;
-const decoded=reader.readItem();assert.equal(decoded.maskPrimary,0x2F80ED);assert.equal(offset,bytes.length);
+const decoded=reader.readItem();assert.equal(decoded.appearance.primary,0x2F80ED);assert.equal(offset,bytes.length);
 const {Texture}=require('../../Emperia-Client/node_modules/pixi.js');
 const originalFrom=Texture.from;
 Texture.from=canvas=>({source:{},pixels:canvas.pixels});

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CopyPlus } from 'lucide-react';
+import { CopyPlus, Sun, Paintbrush, Eraser } from 'lucide-react';
 import { useOBStore } from '../store';
 import { clearSpriteCache, clearSpriteCacheId, decodeSprite } from '../lib/sprite-decoder';
 import { COLOR_MASK_COLORS, getColorMaskLayer, paletteToCSS, OUTFIT_PALETTE, PALETTE_SIZE } from '../lib/outfit-colors';
@@ -23,9 +23,9 @@ const MATERIAL_MASK_OPTIONS: { kind: MaterialMaskKind; label: string; color: str
   { kind: MATERIAL_MASK_KINDS.wood, label: 'Wood', color: materialColorToCSS(MATERIAL_MASK_COLORS[MATERIAL_MASK_KINDS.wood]) },
 ];
 
-export function LayerPanel() {
-  const [brightnessThreshold, setBrightnessThreshold] = useState(128);
-  const [brightnessMode, setBrightnessMode] = useState<'light' | 'dark'>('light');
+export function LayerPanel({ section = 'details' }: { section?: 'masks' | 'details' }) {
+  const [brightnessMin, setBrightnessMin] = useState(128);
+  const [brightnessMax, setBrightnessMax] = useState(255);
   const selectedId = useOBStore((s) => s.selectedThingId);
   const objectData = useOBStore((s) => s.objectData);
   const spriteData = useOBStore((s) => s.spriteData);
@@ -51,7 +51,7 @@ export function LayerPanel() {
   );
   const isEffect = category === 'effect';
   const isItem = category === 'item';
-  const supportsMaterialMask = isItem || category === 'outfit' || category === 'equipment';
+  const supportsMaterialMask = isItem || isDirectionalAppearance;
 
   const group = thing?.frameGroups[activeGroup] ?? null;
   const activeGroupLabel = activeGroup === 0 ? 'Idle' : activeGroup === 1 ? 'Moving' : `Group ${activeGroup}`;
@@ -59,7 +59,7 @@ export function LayerPanel() {
   const isAnimated = group ? group.animationLength > 1 : false;
   const showOffset = isDirectionalAppearance || isEffect || (thing?.flags.hasDisplacement ?? false);
   const hasColorMask = supportsMaterialMask && getColorMaskLayer(thing) != null;
-  const showColors = (hasColorMask || category === 'hair') && blendLayers && (group?.layers ?? 0) >= 2;
+  const showColors = (hasColorMask || category === 'hair') && (blendLayers || materialMaskPaintMode != null) && (group?.layers ?? 0) >= 2;
   const hasMaterialMask = supportsMaterialMask && thing?.materialMaskLayer != null;
   const hasMask = hasMaterialMask || hasColorMask;
   const activeMaterialMaskLayer = thing?.materialMaskLayer ?? (hasColorMask ? 1 : undefined);
@@ -80,10 +80,10 @@ export function LayerPanel() {
   const hasSharedMaterialMasks = sharedMaterialMaskReferenceCount > 0;
 
   useEffect(() => {
-    if (hasActiveGroupSharedMaterialMasks && materialMaskPaintMode) {
+    if (section === 'details' && hasActiveGroupSharedMaterialMasks && materialMaskPaintMode) {
       useOBStore.setState({ materialMaskPaintMode: null });
     }
-  }, [hasActiveGroupSharedMaterialMasks, materialMaskPaintMode]);
+  }, [section, hasActiveGroupSharedMaterialMasks, materialMaskPaintMode]);
 
   const markThingDirty = useCallback(() => {
     if (!thing) return;
@@ -284,7 +284,7 @@ export function LayerPanel() {
             ? new ImageData(new Uint8ClampedArray(existingMask.data), existingMask.width, existingMask.height)
             : new ImageData(base.width, base.height);
           if (byBrightness) {
-            fillMaterialMaskFromBrightness(base, mask, materialColor, brightnessThreshold, brightnessMode);
+            fillMaterialMaskFromBrightness(base, mask, materialColor, brightnessMin, brightnessMax);
           } else {
             fillMaterialMaskFromNonBlackPixels(base, mask, materialColor);
           }
@@ -309,7 +309,7 @@ export function LayerPanel() {
       ...(byBrightness ? { activeLayer: activeMaterialMaskLayer, blendLayers: false, materialMaskPaintMode: 'paint' as const, selectedSlots: [] } : {}),
       editVersion: store.editVersion + 1,
     });
-  }, [activeMaskColor, activeColorMaskRegion, hasColorMask, activeMaterialMaskLayer, hasSharedMaterialMasks, spriteData, thing, brightnessThreshold, brightnessMode]);
+  }, [activeMaskColor, activeColorMaskRegion, hasColorMask, activeMaterialMaskLayer, hasSharedMaterialMasks, spriteData, thing, brightnessMin, brightnessMax]);
 
   const updateFrameGroupProp = useCallback((key: string, value: number) => {
     if (!thing || !group) return;
@@ -338,29 +338,36 @@ export function LayerPanel() {
   }, [thing, group]);
 
   if (!thing || (!supportsMaterialMask && !hasMultipleLayers && !showOffset && !isAnimated)) return null;
+  if (section === 'masks' && !supportsMaterialMask) return null;
 
   return (
-    <div className="border-t border-emperia-border text-[10px] space-y-1">
+    <div className={section === 'masks'
+      ? 'flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded border border-amber-500/10 bg-amber-950/20 px-2 py-1.5 text-[10px]'
+      : 'border-t border-emperia-border text-[10px] space-y-1'}>
 
-      {supportsMaterialMask && (
+      {supportsMaterialMask && (section === 'masks' || hasMask) && (
         <>
-          <div className="px-2 py-1 bg-amber-950/30 border-b border-emperia-border/40">
-            <span className="text-[9px] font-semibold uppercase tracking-wider text-amber-400 opacity-90">Masks</span>
-          </div>
-          <div className="px-3 py-2 space-y-2">
+          {section === 'masks' ? (
+            <span className="text-[10px] text-amber-400/80">Masks:</span>
+          ) : (
+            <div className="px-2 py-1 bg-amber-950/30 border-b border-emperia-border/40">
+              <span className="text-[9px] font-semibold uppercase tracking-wider text-amber-400 opacity-90">Masks</span>
+            </div>
+          )}
+          <div className={section === 'masks' ? 'flex flex-wrap items-center gap-x-4 gap-y-1.5' : 'px-3 py-2 space-y-2'}>
             <div className="flex items-center gap-2">
-              <label className="flex min-w-0 items-center gap-1.5 cursor-pointer">
+              {section === 'masks' && <label className="flex min-w-0 items-center gap-1.5 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={hasMaterialMask}
                   disabled={hasColorMask}
                   title={hasColorMask ? 'Disable color masks first' : undefined}
                   onChange={(event) => setMaterialMaskEnabled(event.target.checked)}
-                  className="w-3 h-3 accent-amber-500"
+                  className="mask-checkbox"
                 />
                 <span className="text-emperia-text">Use material masks</span>
-              </label>
-              {hasMask && (
+              </label>}
+              {section === 'details' && hasMask && (
                 hasSharedMaterialMasks ? (
                   <button
                     type="button"
@@ -371,25 +378,18 @@ export function LayerPanel() {
                     <CopyPlus className="h-2.5 w-2.5" />
                     Make masks unique ({sharedMaterialMaskReferenceCount})
                   </button>
-                ) : (
-                  <span
-                    className="ml-auto shrink-0 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[8px] text-emerald-400"
-                    title="The mask sprite IDs are private in every animation group"
-                  >
-                    Masks unique
-                  </span>
-                )
+                ) : null
               )}
             </div>
-            <label className="flex items-center gap-1.5 cursor-pointer">
+            {section === 'masks' && <label className="flex items-center gap-1.5 cursor-pointer">
               <input type="checkbox" checked={hasColorMask} disabled={hasMaterialMask || (hasColorMask && thing.frameGroups.some(frameGroup => frameGroup.layers > 2))}
                 title={hasMaterialMask ? 'Disable material masks first' : hasColorMask && thing.frameGroups.some(frameGroup => frameGroup.layers > 2) ? 'Reduce to two layers before removing the color mask' : undefined}
-                onChange={(event) => setColorMaskEnabled(event.target.checked)} className="w-3 h-3 accent-amber-500" />
+                onChange={(event) => setColorMaskEnabled(event.target.checked)} className="mask-checkbox" />
               <span className="text-emperia-text">Use color masks</span>
-            </label>
-            {hasMask && (
-              <div className="space-y-1.5 rounded border border-amber-500/15 bg-amber-950/10 p-2">
-                <div className="flex gap-1">
+            </label>}
+            {section === 'details' && hasMask && (
+              <div className="space-y-3">
+                <div className="flex gap-1 rounded-md border border-emperia-border bg-emperia-surface/40 p-1">
                   {(hasColorMask ? COLOR_MASK_OPTIONS : MATERIAL_MASK_OPTIONS).map((option) => {
                     const selected = (hasColorMask ? activeColorMaskRegion : activeMaterialMaskKind) === option.kind;
                     return (
@@ -399,7 +399,8 @@ export function LayerPanel() {
                         onClick={() => hasColorMask
                           ? selectColorMaskRegion(option.kind as 'primary' | 'secondary')
                           : selectMaterialMaskColor(option.kind as MaterialMaskKind)}
-                        className={`flex flex-1 items-center justify-center gap-1 rounded border px-1 py-1 text-[8px] ${selected ? 'border-white/50 bg-white/10 text-white' : 'border-emperia-border text-emperia-muted hover:text-emperia-text'}`}
+                        aria-pressed={selected}
+                        className={`flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded px-1 py-1.5 text-[9px] transition-colors ${selected ? 'bg-white/10 text-white shadow-sm' : 'text-emperia-muted hover:bg-white/5 hover:text-emperia-text'}`}
                         title={`Paint ${option.label} regions`}
                       >
                         <span className="h-2 w-2 rounded-full" style={{ backgroundColor: option.color }} />
@@ -408,16 +409,14 @@ export function LayerPanel() {
                     );
                   })}
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-emperia-muted">All mask colors share layer {activeMaterialMaskLayer != null ? activeMaterialMaskLayer + 1 : '—'}</span>
-                </div>
+                <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={desaturateBaseSprites}
                   className="w-full rounded border border-emperia-border px-2 py-1 text-[9px] text-emperia-muted hover:border-amber-400/60 hover:text-emperia-text"
                   title="Set HSV saturation to zero for Idle and Moving sprites, excluding the mask layer"
                 >
-                  Set Idle + Moving saturation to 0
+                  Desaturate base
                 </button>
                 <button
                   type="button"
@@ -428,52 +427,52 @@ export function LayerPanel() {
                     ? 'Make the shared mask IDs unique in every animation group before creating masks'
                     : `Add ${activeMaterialMaskLabel} to visible, non-black pixels in Idle and Moving that do not already have a mask region`}
                 >
-                  Create Idle + Moving {activeMaterialMaskLabel} masks
+                  Fill unmasked
                 </button>
-                <div className="space-y-1.5 rounded border border-emperia-border p-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-emperia-text">Mask by brightness</span>
-                    <select aria-label="Brightness selection" value={brightnessMode}
-                      onChange={(event) => setBrightnessMode(event.target.value as 'light' | 'dark')}
-                      className="rounded border border-emperia-border bg-emperia-surface text-[9px] text-emperia-text">
-                      <option value="light">Light pixels</option>
-                      <option value="dark">Dark pixels</option>
-                    </select>
+                </div>
+                <div className="space-y-2 rounded-md border border-emperia-border bg-emperia-surface/30 p-2.5">
+                  <div className="flex items-center gap-1.5 text-emperia-muted" title="Select base pixels by brightness, from black (0) to white (255). Both limits are included.">
+                    <Sun className="h-3 w-3" aria-hidden="true" />
+                    <span className="text-[9px]">Brightness range</span>
                   </div>
                   <label className="flex items-center gap-2">
-                    <span className="text-emperia-muted">Threshold</span>
-                    <input type="range" min={0} max={255} value={brightnessThreshold}
-                      onChange={(event) => setBrightnessThreshold(Number(event.target.value))}
+                    <span className="w-6 text-emperia-muted">Min</span>
+                    <input aria-label="Minimum brightness" type="range" min={0} max={255} value={brightnessMin}
+                      onChange={(event) => setBrightnessMin(Math.min(Number(event.target.value), brightnessMax))}
                       className="min-w-0 flex-1 accent-amber-500" />
-                    <span className="w-6 text-right font-mono text-emperia-text">{brightnessThreshold}</span>
+                    <span className="w-6 text-right font-mono text-emperia-text">{brightnessMin}</span>
                   </label>
-                  <p className="text-[8px] leading-relaxed text-emperia-muted">
-                    {brightnessMode === 'light' ? `Brightness ≥ ${brightnessThreshold}` : `Brightness < ${brightnessThreshold}`} (0 = black, 255 = white).
-                    {' '}Replaces {activeMaterialMaskLabel} in all groups, directions and frames. Other painted regions are preserved.
-                  </p>
+                  <label className="flex items-center gap-2">
+                    <span className="w-6 text-emperia-muted">Max</span>
+                    <input aria-label="Maximum brightness" type="range" min={0} max={255} value={brightnessMax}
+                      onChange={(event) => setBrightnessMax(Math.max(Number(event.target.value), brightnessMin))}
+                      className="min-w-0 flex-1 accent-amber-500" />
+                    <span className="w-6 text-right font-mono text-emperia-text">{brightnessMax}</span>
+                  </label>
                   <button type="button" onClick={() => createMasksFromPixels(true)}
                     disabled={!spriteData || hasSharedMaterialMasks}
-                    title={hasSharedMaterialMasks ? 'Make masks unique before generating by brightness' : 'Apply the threshold and show the generated mask'}
-                    className="w-full rounded border border-amber-500/30 bg-amber-950/20 px-2 py-1 text-[9px] text-amber-300 hover:border-amber-400/70 disabled:cursor-not-allowed disabled:opacity-40">
-                    Apply brightness to {activeMaterialMaskLabel}
+                    title={hasSharedMaterialMasks ? 'Make masks unique before generating by brightness' : `Rebuild ${activeMaterialMaskLabel} from base pixels in the inclusive range ${brightnessMin}–${brightnessMax}, across all groups, directions and frames. Overwrites matching colors and clears old ${activeMaterialMaskLabel} pixels outside the range.`}
+                    className="w-full rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[10px] font-medium text-amber-300 transition-colors hover:border-amber-400/70 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-40">
+                    Apply range
                   </button>
                 </div>
-                <div className="flex items-center gap-1">
-                  <span className="mr-auto text-emperia-muted">Edit mask</span>
+                <div className="flex items-center gap-1 rounded-md border border-emperia-border bg-emperia-surface/40 p-1">
                   <button
                     type="button"
                     onClick={() => setPaintMode('paint')}
                     disabled={hasActiveGroupSharedMaterialMasks}
-                    title={hasActiveGroupSharedMaterialMasks ? 'Make the shared mask IDs unique before editing' : 'Paint the selected region'}
-                    className={`rounded border px-2 py-1 text-[9px] disabled:cursor-not-allowed disabled:opacity-40 ${materialMaskPaintMode === 'paint' ? 'border-amber-400 bg-amber-500/20 text-amber-300' : 'border-emperia-border text-emperia-muted hover:text-emperia-text'}`}
-                  >Paint</button>
+                    title={hasActiveGroupSharedMaterialMasks ? 'Make the shared mask IDs unique before editing' : 'Left mouse paints the selected region; right mouse erases. Paint stays inside the base sprite.'}
+                    aria-pressed={materialMaskPaintMode === 'paint'}
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded px-2 py-1.5 text-[10px] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${materialMaskPaintMode === 'paint' ? 'bg-amber-500/15 text-amber-300' : 'text-emperia-muted hover:bg-white/5 hover:text-emperia-text'}`}
+                  ><Paintbrush className="h-3 w-3" aria-hidden="true" />Paint</button>
                   <button
                     type="button"
                     onClick={() => setPaintMode('erase')}
                     disabled={hasActiveGroupSharedMaterialMasks}
                     title={hasActiveGroupSharedMaterialMasks ? 'Make the shared mask IDs unique before editing' : 'Erase mask pixels'}
-                    className={`rounded border px-2 py-1 text-[9px] disabled:cursor-not-allowed disabled:opacity-40 ${materialMaskPaintMode === 'erase' ? 'border-amber-400 bg-amber-500/20 text-amber-300' : 'border-emperia-border text-emperia-muted hover:text-emperia-text'}`}
-                  >Erase</button>
+                    aria-pressed={materialMaskPaintMode === 'erase'}
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded px-2 py-1.5 text-[10px] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${materialMaskPaintMode === 'erase' ? 'bg-amber-500/15 text-amber-300' : 'text-emperia-muted hover:bg-white/5 hover:text-emperia-text'}`}
+                  ><Eraser className="h-3 w-3" aria-hidden="true" />Erase</button>
                 </div>
                 <label className="flex items-center gap-2">
                   <span className="text-emperia-muted">Brush</span>
@@ -485,11 +484,8 @@ export function LayerPanel() {
                     onChange={(event) => useOBStore.setState({ materialMaskBrushSize: Number(event.target.value) })}
                     className="min-w-0 flex-1 accent-amber-500"
                   />
-                  <span className="w-4 text-right font-mono text-emperia-text">{materialMaskBrushSize}</span>
+                  <span className="w-8 text-right font-mono text-emperia-text">{materialMaskBrushSize}px</span>
                 </label>
-                <p className="text-[8px] leading-relaxed text-emperia-muted">
-                  Hold left mouse to paint and right mouse to erase. {hasColorMask ? 'Primary is yellow; Secondary is red.' : 'Leather is orange, Cloth is purple, Metal is blue, and Wood is green.'} The item stays visible as a translucent guide.
-                </p>
               </div>
             )}
           </div>
@@ -497,7 +493,7 @@ export function LayerPanel() {
       )}
 
       {/* ── ANIMATION ── */}
-      {isAnimated && group && (
+      {section === 'details' && isAnimated && group && (
         <>
           <div className="px-2 py-1 bg-emerald-950/30 border-y border-emperia-border/40">
             <span className="text-[9px] font-semibold uppercase tracking-wider text-emerald-400 opacity-80">Animation</span>
@@ -583,7 +579,7 @@ export function LayerPanel() {
       )}
 
       {/* ── OFFSET ── */}
-      {showOffset && (
+      {section === 'details' && showOffset && (
         <>
           <div className="px-2 py-1 bg-emperia-surface/60 border-y border-emperia-border/40">
             <div className="flex items-center justify-between">
@@ -622,7 +618,7 @@ export function LayerPanel() {
       )}
 
       {/* ── OUTFIT COLORS ── */}
-      {showColors && (
+      {section === 'details' && showColors && (
         <>
           <div className="px-2 py-1 bg-emperia-surface/60 border-y border-emperia-border/40">
             <span className="text-[9px] font-semibold uppercase tracking-wider text-emperia-muted">Colors</span>

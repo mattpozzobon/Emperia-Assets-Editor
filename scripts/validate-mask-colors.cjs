@@ -29,9 +29,10 @@ for(const material of [0,10]) {
  const all=Buffer.concat([wire,Buffer.from([0xef,0xbe])]);let offset=0;
  const reader={...proto,readUInt8:()=>all[offset++],readUInt16(){return this.readUInt8()|this.readUInt8()<<8;}};
  const decoded=reader.readItem();
- assert.equal(decoded.maskPrimary,item.getMaskPrimary());
- assert.equal(decoded.maskSecondary??decoded.maskPrimary,item.getMaskSecondary());
- assert.equal(decoded.materialId,material);assert.equal(offset,size);assert.equal(reader.readUInt16(),0xBEEF);
+ assert.deepEqual(decoded.appearance,item.getAppearance());
+ assert.equal(value.materialId,decoded.appearance?.kind==='material'?material:0);
+ assert.equal(restored.getAttribute(ItemAttr.MaterialId)||0,material,'crafting material survives even when colour mode is rendered');
+ assert.equal(offset,size);assert.equal(reader.readUInt16(),0xBEEF);
  cases++;
 }
 console.log(JSON.stringify({maskColourSaveAndWireRoundTrips:cases,fixedSemanticBytes:FIXED_ITEM_SEMANTIC_BYTES}));

@@ -2,6 +2,7 @@ import { useOBStore } from '../store';
 import type { ThingType, FrameGroup } from '../lib/types';
 import { getColorMaskLayer } from '../lib/outfit-colors';
 import { ParamField, StepperBtn } from './ui-primitives';
+import { LayerPanel } from './LayerPanel';
 
 interface ControlsPanelProps {
   thing: ThingType;
@@ -35,26 +36,26 @@ export function ControlsPanel({
   });
 
   return (
-    <div className="border-t border-emperia-border text-[10px]">
+    <div className="max-h-[45%] shrink-0 overflow-y-auto border-t border-emperia-border text-[10px]">
 
       {/* ═══════════════════════════════════════════════ */}
       {/* ── PATTERNS ─────────────────────────────────── */}
       {/* ═══════════════════════════════════════════════ */}
       <SectionHeader label="Patterns" />
       <div className="px-4 py-1.5 space-y-1.5">
-        {/* Row 1: Size */}
+        {/* Size */}
         <div className="grid grid-cols-3 gap-x-3 gap-y-1 bg-emperia-surface/40 rounded px-2 py-1.5">
           <ParamField label="Width" value={group.width} onChange={(v) => updateFrameGroupProp('width', v)} min={1} max={8} />
           <ParamField label="Height" value={group.height} onChange={(v) => updateFrameGroupProp('height', v)} min={1} max={8} />
           <ParamField label="Crop Size" value={32} readOnly />
         </div>
-        {/* Row 2: Patterns (blue) */}
+        {/* Patterns (blue) */}
         <div className="grid grid-cols-3 gap-x-3 gap-y-1 bg-blue-950/20 border border-blue-500/10 rounded px-2 py-1.5">
           <ParamField label="Pattern X" value={group.patternX} onChange={(v) => updateFrameGroupProp('patternX', v)} min={1} max={8} labelClassName="text-[10px] text-blue-400/80" />
           <ParamField label="Pattern Y" value={group.patternY} onChange={(v) => updateFrameGroupProp('patternY', v)} min={1} max={8} labelClassName="text-[10px] text-blue-400/80" />
           <ParamField label="Pattern Z" value={group.patternZ} onChange={(v) => updateFrameGroupProp('patternZ', v)} min={1} max={8} labelClassName="text-[10px] text-blue-400/80" />
         </div>
-        {/* Row 3: Layers + Animations (individually color-coded to match their sections) */}
+        {/* Layers and animations */}
         <div className="grid grid-cols-2 items-start gap-x-2">
           <div className="bg-purple-950/20 border border-purple-500/10 rounded px-2 py-1.5">
             <ParamField label="Layers" value={group.layers} onChange={(v) => updateFrameGroupProp('layers', v)} min={1} max={255} labelClassName="text-[10px] text-purple-400/80" />
@@ -84,6 +85,7 @@ export function ControlsPanel({
             <ParamField label="Animations" value={group.animationLength} onChange={(v) => updateFrameGroupProp('animationLength', v)} min={1} max={999} labelClassName="text-[10px] text-emerald-400/80" />
           </div>
         </div>
+        <LayerPanel section="masks" />
       </div>
 
       {/* ═══════════════════════════════════════════════ */}

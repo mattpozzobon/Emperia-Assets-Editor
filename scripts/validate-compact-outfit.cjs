@@ -1,3 +1,4 @@
+const {colorAppearance, paletteAppearance, materialAppearance} = (()=>{require("../../Emperia-Client/scripts/test-support/register-client-typescript.cjs"); return require("../../Emperia-Server/src/shared/appearance.ts");})();
 const assert = require('node:assert/strict');
 const { performance } = require('node:perf_hooks');
 require('../../Emperia-Client/scripts/test-support/register-client-typescript.cjs');
@@ -15,7 +16,7 @@ const reader = {
  readUInt8() { assert.ok(read < written, 'Overread'); return bytes[read++]; },
  readUInt16() { return this.readUInt8() | this.readUInt8() << 8; },
 };
-const sprites = Array.from({length:9}, (_,i)=>({id:300+i, colors:{primary:22+i,secondary:i%2?58:22+i}, rarity:2,level:8,materialId:7,materialComposition:0x123456}));
+const sprites = Array.from({length:9}, (_,i)=>({id:300+i, appearance:i%3===0?materialAppearance(7,0x123456):paletteAppearance(22+i,i%2?58:22+i), rarity:2,level:8}));
 let cases = 0;
 for (let mask=0;mask<512;mask++) for(let extras=0;extras<32;extras++) for(const renderHelmet of [false,true]) {
  const outfit={id:134, renderHelmet, sprites, attachments:{healthPotion:extras&1?1:0,manaPotion:extras&2?2:0,energyPotion:extras&4?3:0,bag:extras&8?255:0},lightSourceItemId:extras&16?65535:0};
@@ -34,9 +35,8 @@ for (let mask=0;mask<512;mask++) for(let extras=0;extras<32;extras++) for(const 
  result.sprites.forEach((slot,i)=>{
   if(!(mask&(1<<i))) {assert.equal(slot.id,0);return;}
   assert.equal(i===0?slot.sourceHairId:slot.sourceItemId,sprites[i].id);
-  assert.deepEqual(slot.colors,sprites[i].colors);
+  assert.deepEqual(slot.appearance,sprites[i].appearance);
   assert.equal(slot.rarity,2);assert.equal(slot.level,8);
-  assert.equal(slot.materialId,7);assert.equal(slot.materialComposition,0x123456);
  });
  cases++;
 }
@@ -51,20 +51,17 @@ assert.equal(proto.readOutfit.call(reader).sprites[8].sourceVisualEquipmentId,65
 assert.equal(read,written);
 written=0;writeOutfit(writer,sparse,0);assert.equal(written,4);
 
-// Optional exact RGB dye must survive every metadata/colour combination.
-for (const maskPrimary of [undefined, 0, 0xFFFFFF, 1, 0x123456, 0xFF0000, 0xFFFFFE])
- for (const colors of [undefined, {primary:22, secondary:22}, {primary:22, secondary:58}])
- for (const metadata of [false,true]) for(const maskSecondary of [undefined,0,0xABCDEF,maskPrimary]) {
-  const slot = { id:321, maskPrimary, maskSecondary, colors, ...(metadata ? {rarity:2,level:8,materialId:7,materialComposition:0x123456} : {}) };
+// Both exclusive branches, exact RGB and palette compaction preserve boundaries.
+for (const appearance of [undefined, materialAppearance(7), materialAppearance(7,0x123456),
+  ...[0,1,0xFFFFFF,0x123456,0xFF0000,0xFFFFFE].flatMap(primary =>
+    [primary,0,0xFFFFFF,0xABCDEF].map(secondary => colorAppearance(primary,secondary)))])
+ for (const metadata of [false,true]) {
+  const slot = {id:321,appearance,...(metadata?{rarity:2,level:8}:{})};
   const outfit = {...empty, sprites:empty.sprites.map((s,i)=>i===1?slot:s)};
-  written=read=0; writeOutfit(writer,outfit);
-  assert.equal(written,getOutfitWireSize(outfit));
-  const size=written; writer.writeUInt16(0xBEEF);
-  const decoded=proto.readOutfit.call(reader).sprites[1];
-  assert.equal(decoded.maskPrimary,maskPrimary && maskPrimary!==0xFFFFFF ? maskPrimary : undefined);
-  assert.equal(decoded.maskSecondary,maskSecondary != null && maskSecondary !== (maskPrimary ?? 0xFFFFFF) ? maskSecondary : undefined);
-  if(colors) assert.deepEqual(decoded.colors,colors);
-  assert.equal(read,size); assert.equal(reader.readUInt16(),0xBEEF);
+  written=read=0;writeOutfit(writer,outfit);assert.equal(written,getOutfitWireSize(outfit));
+  const size=written;writer.writeUInt16(0xBEEF);
+  assert.deepEqual(proto.readOutfit.call(reader).sprites[1].appearance,appearance);
+  assert.equal(read,size);assert.equal(reader.readUInt16(),0xBEEF);
  }
 
 function oldWrite(writer,outfit,mask=511) {
@@ -74,7 +71,7 @@ function oldWrite(writer,outfit,mask=511) {
  for(let i=0;i<9;i++)if(slots&(1<<i))writeOutfitSlot(writer,outfit.sprites[i]);
  const a=outfit.attachments;writer.writeUInt8(a.healthPotion);writer.writeUInt8(a.manaPotion);writer.writeUInt8(a.energyPotion);writer.writeUInt8(a.bag);writer.writeUInt16(outfit.lightSourceItemId);
 }
-const typical={...empty,sprites:sprites.map((s,i)=>i<5?{id:s.id,colors:s.colors}:{id:0})};
+const typical={...empty,sprites:sprites.map((s,i)=>i<5?{id:s.id,appearance:s.appearance}:{id:0})};
 const dense={...empty,sprites,attachments:{healthPotion:1,manaPotion:2,energyPotion:3,bag:4},lightSourceItemId:100};
 const examples=[empty,typical,dense].map((outfit,i)=>{
  written=0;oldWrite(writer,outfit);const before=written;written=0;writeOutfit(writer,outfit);

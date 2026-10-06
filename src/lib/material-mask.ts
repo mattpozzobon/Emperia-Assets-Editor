@@ -51,27 +51,30 @@ export function fillMaterialMaskFromNonBlackPixels(
   }
 }
 
-/** Rebuilds one region from perceived brightness, preserving other regions. */
+/** Rebuilds one region from base brightness, overwriting any matching mask pixels. */
 export function fillMaterialMaskFromBrightness(
   base: ImageData,
   mask: ImageData,
   color: number,
-  threshold: number,
-  mode: 'light' | 'dark',
+  minimum: number,
+  maximum: number,
 ): void {
   const red = (color >>> 16) & 0xFF;
   const green = (color >>> 8) & 0xFF;
   const blue = color & 0xFF;
-  const cutoff = Math.max(0, Math.min(255, Math.round(threshold)));
+  const lower = Math.max(0, Math.min(255, Math.round(minimum)));
+  const upper = Math.max(lower, Math.min(255, Math.round(maximum)));
   for (let offset = 0; offset < mask.data.length; offset += 4) {
     const isSelectedRegion = mask.data[offset] === red
       && mask.data[offset + 1] === green && mask.data[offset + 2] === blue;
-    if (mask.data[offset + 3] !== 0 && !isSelectedRegion) continue;
     // Integer weights keep grayscale values exact at the threshold boundary.
     const brightness = (2126 * base.data[offset] + 7152 * base.data[offset + 1]
       + 722 * base.data[offset + 2]) / 10000;
     const matches = offset < base.data.length && base.data[offset + 3] > 0
-      && (mode === 'light' ? brightness >= cutoff : brightness < cutoff);
+      && brightness >= lower && brightness <= upper;
+    // Existing colors must not block a new selection. Outside the selection,
+    // clear the old active region while keeping unrelated regions intact.
+    if (!matches && !isSelectedRegion) continue;
     mask.data[offset] = matches ? red : 0;
     mask.data[offset + 1] = matches ? green : 0;
     mask.data[offset + 2] = matches ? blue : 0;
@@ -262,6 +265,7 @@ export function paintMaterialMaskStroke(
   brushSize: number,
   erase: boolean,
   color = 0xFFFFFF,
+  base?: ImageData | null,
 ): void {
   const size = Math.max(1, Math.min(8, Math.round(brushSize)));
   const brushStart = -Math.floor((size - 1) / 2);
@@ -279,6 +283,8 @@ export function paintMaterialMaskStroke(
         const targetX = x + brushX;
         const targetY = y + brushY;
         if (targetX < 0 || targetY < 0 || targetX >= mask.width || targetY >= mask.height) continue;
+        if (!erase && base !== undefined && (!base || targetX >= base.width || targetY >= base.height
+          || base.data[(targetY * base.width + targetX) * 4 + 3] === 0)) continue;
         const offset = (targetY * mask.width + targetX) * 4;
         mask.data[offset] = red;
         mask.data[offset + 1] = green;

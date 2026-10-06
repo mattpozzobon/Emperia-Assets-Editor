@@ -31,6 +31,41 @@ textarea:focus {
   -webkit-appearance: none;
 }
 
+/* Compact mask toggles retain native checkbox semantics and keyboard input. */
+.mask-checkbox {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  flex-shrink: 0;
+  border: 1px solid #45403a;
+  border-radius: 3px;
+  background-color: #11100e;
+  cursor: pointer;
+  transition: border-color 120ms, background-color 120ms;
+}
+
+.mask-checkbox:hover:not(:disabled) {
+  border-color: #b88728;
+}
+
+.mask-checkbox:checked {
+  border-color: #b88728;
+  background-color: #38290f;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m2.5 6 2.3 2.3 4.7-4.6' fill='none' stroke='%23fbbf24' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-size: 100% 100%;
+}
+
+.mask-checkbox:focus-visible {
+  outline: 1px solid #fbbf24;
+  outline-offset: 2px;
+}
+
+.mask-checkbox:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

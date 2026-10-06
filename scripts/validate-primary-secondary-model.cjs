@@ -43,7 +43,7 @@ function check(value) {
  if(!value||typeof value!=='object')return;
  if(Array.isArray(value.sprites)) {
   OutfitSchema.parse(value);
-  for(const slot of value.sprites) if(slot.colors) {assert.deepEqual(Object.keys(slot.colors).sort(),['primary','secondary']);savedColors++;}
+  for(const slot of value.sprites) { assert.equal('colors' in slot,false); if(slot.appearance?.kind === 'color') savedColors++; }
  }
  for(const child of Object.values(value))check(child);
 }
@@ -51,7 +51,7 @@ function scan(dir) {for(const entry of fs.readdirSync(dir,{withFileTypes:true}))
 scan(path.resolve('../Emperia-Server/data'));
 for(const value of Object.values(require('../../Emperia-Server/src/game/systems/tutorial/tutorial-outfits.ts')))check(value);
 const saved=PlayerOutfitSchema.parse({hair:{id:904,colors:{primary:114,secondary:0}}});
-assert.deepEqual(saved.sprites[0].colors,{primary:114,secondary:0});
+assert.deepEqual(saved.sprites[0].appearance,require('../../Emperia-Server/src/shared/appearance.ts').paletteAppearance(114,0,true));
 assert.equal(PlayerOutfitSchema.safeParse({hair:{colors:{yellow:114,red:0,green:0,blue:0}}}).success,false);
 process.env.EMPERIA_ASSET_ROOT=root;
 assert.ok(require('../../Emperia-Server/src/game/core/creature/visual-catalog.ts').VISUAL_CATALOG.hairs.length);
