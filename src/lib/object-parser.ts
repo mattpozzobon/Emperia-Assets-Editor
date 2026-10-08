@@ -1,4 +1,5 @@
-import { ATTACHMENT_POINTS, defaultAttachmentDefinition, validateAttachmentDefinition } from './attachments.generated';
+import { ATTACHMENT_POINTS, validateAttachmentDefinition } from './attachments.generated';
+import { migrateAttachmentLibrary } from './attachment-library';
 /**
  * Parses .eobj / .dat files into ObjectData.
  * Ported from Emperia-Client object-buffer.ts — standalone, no game deps.
@@ -25,7 +26,7 @@ const LEGACY_VISUAL_EQUIPMENT = [
   [800, 'Belt Health Potion'],
   [801, 'Belt Mana Potion'],
   [802, 'Belt Stamina Potion'],
-  [803, 'Belt Pouch'],
+  [803, 'Visual Equipment 803'],
   [919, 'Sword'],
   [936, 'Sword'],
   [949, 'Apron'],
@@ -300,6 +301,7 @@ export function parseObjectData(buffer: ArrayBuffer): ObjectData {
   const effectCount = packet.readUInt16();
   const distanceCount = packet.readUInt16();
   const beardCount = formatVersion >= 17 ? packet.readUInt16() : 0;
+  const attachmentCount = formatVersion >= 19 ? packet.readUInt16() : 0;
   const itemAppearances = new Map<number, number>();
   if (formatVersion >= 2) {
     const mappingCount = packet.readUInt32();
@@ -423,7 +425,6 @@ export function parseObjectData(buffer: ArrayBuffer): ObjectData {
             validateAttachmentDefinition(entry.attachment);
           }
         } else {
-          entry.attachment = defaultAttachmentDefinition(visualEquipmentId);
           if (visualEquipmentId >= 800 && visualEquipmentId <= 802) entry.name = `Belt potion position ${visualEquipmentId - 799}`;
         }
         visualEquipmentAppearances.set(visualEquipmentId, entry);
@@ -553,7 +554,19 @@ export function parseObjectData(buffer: ArrayBuffer): ObjectData {
       }
     }
   }
-  const totalCount = itemCount + outfitCount + equipmentCount + hairCount + effectCount + distanceCount + beardCount;
+  const attachmentCatalog = new Map<number, import('./types').AttachmentCatalogEntry>();
+  for (let attachmentId = 1; attachmentId <= attachmentCount; attachmentId++) {
+    const name = packet.readString();
+    const legacySource = packet.readUInt16();
+    const pointCode = packet.readUInt8();
+    if (pointCode < 1 || pointCode > ATTACHMENT_POINTS.length) throw new Error('Invalid attachment point');
+    const attachment = { point: ATTACHMENT_POINTS[pointCode - 1], ranks: [packet.readUInt8(), packet.readUInt8(), packet.readUInt8(), packet.readUInt8()] as [number, number, number, number] };
+    validateAttachmentDefinition(attachment);
+    attachmentCatalog.set(attachmentId, { attachmentId, name, attachment,
+      ...(legacySource !== 0xFFFF ? { legacySourceEquipmentId: legacySource } : {}),
+    });
+  }
+  const totalCount = itemCount + outfitCount + equipmentCount + hairCount + effectCount + distanceCount + beardCount + attachmentCount;
 
   const things = new Map<number, ThingType>();
 
@@ -586,7 +599,8 @@ export function parseObjectData(buffer: ArrayBuffer): ObjectData {
     else if (id <= hairEnd) category = 'hair';
     else if (id <= effectEnd) category = 'effect';
     else if (id <= distanceEnd) category = 'distance';
-    else category = 'beard';
+    else if (id <= distanceEnd + beardCount) category = 'beard';
+    else category = 'attachments';
 
     const materialMaskLayer = materialMaskLayers.get(id);
     things.set(id, {
@@ -606,6 +620,8 @@ export function parseObjectData(buffer: ArrayBuffer): ObjectData {
     itemCount,
     outfitCount,
     equipmentCount,
+    attachmentCount,
+    attachmentCatalog,
     hairCount,
     beardCount,
     effectCount,
@@ -625,8 +641,8 @@ export function parseObjectData(buffer: ArrayBuffer): ObjectData {
     originalBuffer: buffer,
   };
 
-  if (formatVersion >= 6) return parsed;
-  if (formatVersion === 5) return migrateVisualEquipment(parsed);
+  if (formatVersion >= 6) return migrateAttachmentLibrary(parsed);
+  if (formatVersion === 5) return migrateAttachmentLibrary(migrateVisualEquipment(parsed));
 
   // EOBJ v4 stored equipment and hair visuals inside the outfit section.
   // Convert that layout in memory so every subsequent compile emits v5.
@@ -761,7 +777,7 @@ function migrateVisualEquipment(data: ObjectData): ObjectData {
   migrated.forEach(({ visualEquipmentId, name, outfitAppearanceId }, index) => {
     const equipmentAppearanceId = data.equipmentCount + index;
     copyLocalAppearance('equipment', outfitAppearanceId, outfitStart);
-    visualEquipmentAppearances.set(visualEquipmentId, { visualEquipmentId, equipmentAppearanceId, name, attachment: defaultAttachmentDefinition(visualEquipmentId) });
+    visualEquipmentAppearances.set(visualEquipmentId, { visualEquipmentId, equipmentAppearanceId, name, attachment: undefined });
   });
 
   for (let appearanceId = 0; appearanceId < data.hairCount; appearanceId++) {

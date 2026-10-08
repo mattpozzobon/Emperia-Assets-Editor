@@ -90,7 +90,7 @@ export function remapSpriteIds(
  * Returns { insertId, dirtyIds } with the new thing's ID and updated dirty set.
  */
 export function allocateThingId(od: ObjectData, cat: ThingCategory, dirtyIds: Set<number>): { insertId: number; dirtyIds: Set<number> } {
-  const oldTotal = od.itemCount + od.outfitCount + od.equipmentCount + od.hairCount + od.effectCount + od.distanceCount + od.beardCount;
+  const oldTotal = od.itemCount + od.outfitCount + od.equipmentCount + od.hairCount + od.effectCount + od.distanceCount + od.beardCount + (od.attachmentCount ?? 0);
   let insertId: number;
   let shiftFrom: number;
 
@@ -125,10 +125,15 @@ export function allocateThingId(od: ObjectData, cat: ThingCategory, dirtyIds: Se
       insertId = od.itemCount + od.outfitCount + od.equipmentCount + od.hairCount + od.effectCount + od.distanceCount;
       shiftFrom = insertId;
       break;
+    case 'attachments':
+      od.attachmentCount = (od.attachmentCount ?? 0) + 1;
+      insertId = oldTotal + 1;
+      shiftFrom = insertId;
+      break;
     case 'beard':
       od.beardCount++;
       insertId = od.itemCount + od.outfitCount + od.equipmentCount + od.hairCount + od.effectCount + od.distanceCount + od.beardCount;
-      shiftFrom = insertId + 1;
+      shiftFrom = insertId;
       break;
   }
 

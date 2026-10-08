@@ -25,7 +25,7 @@ const beardAppearanceId = original.itemCount + original.outfitCount + original.e
   + original.hairCount + original.effectCount + original.distanceCount + original.beardCount + 1;
 const newBeardId = Math.max(0, ...original.beardDefinitions.keys()) + 1;
 const newAppearanceId = original.beardCount;
-original.beardCount++;
+require('../src/store/thing-helpers.ts').allocateThingId(original, 'beard', new Set());
 original.things.set(beardAppearanceId, { ...hair, id: beardAppearanceId, category: 'beard' });
 original.beardDefinitions.set(newBeardId, {
   beardId: newBeardId, appearanceId: newAppearanceId, name: 'Test Beard',
@@ -33,7 +33,7 @@ original.beardDefinitions.set(newBeardId, {
 });
 const bytes = compileObjectData(original);
 const reparsed = parseObjectData(bytes);
-assert.equal(reparsed.formatVersion, 18);
+assert.equal(reparsed.formatVersion, 19);
 assert.equal(reparsed.beardCount, newAppearanceId + 1);
 assert.equal(reparsed.beardDefinitions.get(newBeardId)?.name, 'Test Beard');
 assert.equal(reparsed.things.get(beardAppearanceId)?.category, 'beard');
@@ -72,4 +72,4 @@ const invalid = normalizeNPCStatistics({ outfit: { sprites: Array.from({ length:
   id: index === SlotKey.Beard ? 65535 : 0,
 })) } });
 assert.equal(invalid.outfit.sprites[SlotKey.Beard].id, 0, 'unknown NPC beard is rejected');
-console.log('Verified EOBJ v18 beard catalog and appearance in all editors, client, and server.');
+console.log('Verified EOBJ v19 beard catalog and appearance in all editors, client, and server.');

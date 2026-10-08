@@ -5,28 +5,34 @@ potion hotbar slots map to `belt1`, `belt2`, and `belt3`. Empty slots remain emp
 equal potion types do not collapse into one visual. Hotbar slots four and five
 remain usable but have no character sprite in this initial profile.
 
-The stable visuals 800/801/802 retain equipment sprites 74/75/76. Visual 803
-retains sprite 77 for `beltPouch`. `backpackLeft`, `backpackRight`, and
-`backpackBottom` are supported by the model, protocol, renderer, and authoring UI;
-their gameplay bindings and artwork can be added later. Backpack contents are
-not automatically exposed as attachments.
+Attachments 1/2/3 have their own object records and use the artwork migrated from
+Equipment 74/75/76 respectively. The three source records are removed from
+Equipment, and the remaining records and catalog references are compacted
+together. The artwork formerly at Equipment 77 stays in Equipment with no
+automatic attachment or belt pouch binding. New attachments receive their own
+indices starting at 4. Reloading a v19 file with the earlier duplicated layout
+also completes this removal, without copying or removing the assets again.
+`beltPouch`, `backpackLeft`, `backpackRight`, and `backpackBottom` remain
+available for explicit future assets and gameplay bindings.
 
 ## Authoring
 
-Open **Equipment → Attachments**. Belt/Backpack filters separate attachments from
+Open **Attachments** in the Equipment/Hair/Beard/Attachments dropdown. Belt/Backpack filters separate attachments from
 item-linked and other cosmetic equipment. Each attachment has a physical point,
-an equipment sprite, a name, and draw ranks for north/east/south/west. Clicking its
+its own sprite record, a name, and draw ranks for north/east/south/west. Clicking its
 preview opens the existing texture editor. New backpack points can be added here.
-The reserved belt visual IDs keep their physical point, while their sprite
-bindings and draw ranks remain editable.
+The reserved belt attachment IDs keep their physical point, while their sprite
+art and draw ranks remain editable.
 
-EOBJ v18 stores the point code (zero for ordinary visual equipment) after each
-visual's name, followed by four UInt8 draw ranks when a point is present. Readers
-still accept previous formats and infer the four historical belt points. All
-sprite data remains unchanged. The Asset Editor compiles v18; the client, server
-visual catalog, and Data Editor preview loader understand this metadata.
+EOBJ v19 appends an independent attachment object bank after Beard, and adds its
+UInt16 count after the Beard header count. After the pose library, each attachment
+has a name, an optional legacy Equipment source (UInt16, 0xFFFF when absent), a
+point code and four UInt8 directional ranks. Attachment IDs are one-based within
+this bank, independently of equipment indices. Client, server and Data Editor
+read this layout. Older assets migrate only Equipment 74/75/76 into this bank;
+editing the attachment frames does not change the equipment record.
 
-The artwork step is intentionally pending: neutralize the liquid in 74/75/76 and
+The artwork step is intentionally pending: neutralize the liquid in Attachments 1/2/3 and
 add a second sprite layer with a yellow mask over the liquid (`primary`). Keep
 glass, cork, and other fixed colours outside that region. Health uses RGB
 `FF0000`, mana `0000FF`, and stamina `00FF00`. The ordinary two-region appearance
@@ -37,7 +43,7 @@ channels. Without masks, the current baked sprite colours remain visible.
 
 The canonical model lives in `Emperia-Server/src/shared/attachments.ts`. The
 protocol generator copies it into the client and Asset Editor and checks drift.
-An active point carries `{ visualEquipmentId, appearance? }`, where appearance
+An active point carries `{ attachmentId, appearance? }`, where appearance
 uses the existing exclusive colour/material model. Legacy authored NPC/monster
 flags are normalized on read; player attachments are derived from equipment and
 are not persisted separately.
@@ -55,7 +61,7 @@ appearance payload for each populated point in canonical order. Header bits
 12–14 are reserved and rejected. Appearance deltas replace the sparse attachment
 snapshot, including an empty bitmap to clear every point. RGB, palette, and
 material appearance payloads share the slot codec. Auxiliary protocol version
-54 and entity-update version 22 require coordinated server/client rollout.
+55 and entity-update version 23 require coordinated server/client rollout.
 
 The generic coloured payload can use more bytes than the old presence-only
 flags. Empty full outfits still occupy four bytes. This change provides richer
@@ -79,5 +85,5 @@ combinations and trailing-field boundaries.
 
 Restart the server through its normal entry point (which rebuilds the native
 runtime), rebuild/reload the client, and reload the Asset Editor together. Existing
-v17 assets work until the next v18 compilation. No sprite pixels, production
+v17 assets work until the next v19 compilation. No sprite pixels, production
 deployment, or live player database rows were changed for this implementation.

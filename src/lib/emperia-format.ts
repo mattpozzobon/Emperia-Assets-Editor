@@ -20,7 +20,7 @@
 
 export const EMPERIA_MAGIC = new Uint8Array([0x45, 0x4D, 0x50, 0x45, 0x52, 0x49, 0x41, 0x00]); // "EMPERIA\0"
 export const EMPERIA_HEADER_SIZE = 20;
-export const EOBJ_FORMAT_VERSION = 18;
+export const EOBJ_FORMAT_VERSION = 19;
 
 export const enum EmperiaFileType {
   SPRITE_DATA  = 0x01,

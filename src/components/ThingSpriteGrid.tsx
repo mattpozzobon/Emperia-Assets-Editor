@@ -54,12 +54,13 @@ const defaultRowAssignments = (
 });
 
 const supportsFullSheetImport = (category?: string) => (
-  category === 'equipment' || category === 'hair' || category === 'beard' || category === 'outfit'
+  category === 'equipment' || category === 'hair' || category === 'beard' || category === 'attachments' || category === 'outfit'
 );
 
 const categoryLabel = (category?: string) => {
   if (category === 'hair') return 'Hair';
   if (category === 'beard') return 'Beard';
+  if (category === 'attachments') return 'Attachment';
   if (category === 'outfit') return 'Outfit';
   return 'Equipment';
 };

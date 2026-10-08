@@ -7,6 +7,7 @@ import { parseObjectData } from '../lib/object-parser';
 import { parseSpriteData, clearSpriteCache, clearSpriteCacheId } from '../lib/sprite-decoder';
 import { maybeDecompress } from '../lib/emperia-format';
 import { syncItemFlagsFromVisual, deriveGroup, deriveTopOrder, poseSetProfileKey } from '../lib/types';
+import { migrateAttachmentLibrary } from '../lib/attachment-library';
 import type { OBState } from './store-types';
 import { shiftThingsDown, allocateThingId, remapSpriteIds } from './thing-helpers';
 import { createHairCatalogSlice } from './hair-catalog-slice';
@@ -292,14 +293,16 @@ export const useOBStore = create<OBState>((set, get) => ({
   setActiveLibrary: (cat) => {
     const current = get();
     if (cat === 'attachments') {
-      const range = current.getCategoryRange('equipment');
-      const attachment = Array.from(current.objectData?.visualEquipmentAppearances.values() ?? [])
-        .find(entry => entry.attachment && entry.equipmentAppearanceId > 0);
+      if (current.objectData) {
+        const migrated = migrateAttachmentLibrary(current.objectData);
+        if (migrated !== current.objectData) set({ objectData: migrated, dirty: true, editVersion: current.editVersion + 1 });
+      }
+      const range = current.getCategoryRange('attachments');
       set({
-        activeCategory: 'equipment',
+        activeCategory: 'attachments',
         activeLibrary: 'attachments',
         centerTab: 'attachments',
-        selectedThingId: range && attachment ? range.start + attachment.equipmentAppearanceId : null,
+        selectedThingId: range && range.end >= range.start ? range.start : null,
         selectedThingIds: new Set(),
         searchQuery: '',
         filterGroup: -1,
@@ -954,6 +957,9 @@ export const useOBStore = create<OBState>((set, get) => ({
     const { objectData, editVersion } = get();
     if (!objectData) return null;
 
+    const points = ['belt1', 'belt2', 'belt3', 'beltPouch', 'backpackLeft', 'backpackRight', 'backpackBottom'] as const;
+    const point = cat === 'attachments' ? points.find(candidate => !Array.from(objectData.attachmentCatalog?.values() ?? []).some(entry => entry.attachment.point === candidate)) : undefined;
+    if (cat === 'attachments' && !point) return null;
     const { insertId, dirtyIds: newDirtyIds } = allocateThingId(objectData, cat, get().dirtyIds);
 
     const defaultFlags: ThingFlags = {
@@ -969,12 +975,18 @@ export const useOBStore = create<OBState>((set, get) => ({
     };
 
     const isBeard = cat === 'beard';
+    if (cat === 'attachments') {
+      if (!point) throw new Error('Every attachment point already has an asset');
+      objectData.attachmentCatalog = new Map(objectData.attachmentCatalog);
+      const attachmentId = objectData.attachmentCount!;
+      objectData.attachmentCatalog.set(attachmentId, { attachmentId, name: `Attachment ${attachmentId}`, attachment: { point, ranks: [0, 0, 0, 0] } });
+    }
     const defaultFrameGroup = {
-      type: 0, width: 1, height: 1, layers: isBeard ? 2 : 1,
-      patternX: isBeard ? 4 : 1, patternY: 1, patternZ: 1,
+      type: 0, width: 1, height: 1, layers: isBeard || cat === 'attachments' ? 2 : 1,
+      patternX: isBeard || cat === 'attachments' ? 4 : 1, patternY: 1, patternZ: 1,
       animationLength: 1, asynchronous: 0, nLoop: 0, start: 0,
       animationLengths: [{ min: 0, max: 0 }],
-      sprites: isBeard ? Array(8).fill(0) : [0],
+      sprites: isBeard || cat === 'attachments' ? Array(8).fill(0) : [0],
     };
 
     const newThing = {
@@ -982,7 +994,7 @@ export const useOBStore = create<OBState>((set, get) => ({
       category: cat,
       flags: defaultFlags,
       frameGroups: [defaultFrameGroup],
-      ...(isBeard ? { colorMaskSources: [0] } : {}),
+      ...(isBeard || cat === 'attachments' ? { colorMaskSources: [0] } : {}),
     };
 
     objectData.things.set(insertId, newThing);
@@ -1082,14 +1094,20 @@ export const useOBStore = create<OBState>((set, get) => ({
     if (id !== lastId) return;
 
     const oldTotal = objectData.itemCount + objectData.outfitCount + objectData.equipmentCount
-      + objectData.hairCount + objectData.effectCount + objectData.distanceCount + objectData.beardCount;
+      + objectData.hairCount + objectData.effectCount + objectData.distanceCount + objectData.beardCount + (objectData.attachmentCount ?? 0);
 
+    if (activeCategory === 'attachments' && (objectData.attachmentCount ?? 0) <= 3) return;
     objectData.things.delete(id);
 
     switch (activeCategory) {
       case 'item': objectData.itemCount--; break;
       case 'outfit': objectData.outfitCount--; break;
       case 'equipment': objectData.equipmentCount--; break;
+      case 'attachments': {
+        objectData.attachmentCatalog?.delete(objectData.attachmentCount ?? 0);
+        objectData.attachmentCount = (objectData.attachmentCount ?? 0) - 1;
+        break;
+      }
       case 'hair': objectData.hairCount--; break;
       case 'effect': objectData.effectCount--; break;
       case 'distance': objectData.distanceCount--; break;
@@ -1391,6 +1409,11 @@ export const useOBStore = create<OBState>((set, get) => ({
         return {
           start: od.itemCount + od.outfitCount + od.equipmentCount + od.hairCount + od.effectCount + 1,
           end: od.itemCount + od.outfitCount + od.equipmentCount + od.hairCount + od.effectCount + od.distanceCount,
+        };
+      case 'attachments':
+        return {
+          start: od.itemCount + od.outfitCount + od.equipmentCount + od.hairCount + od.effectCount + od.distanceCount + od.beardCount + 1,
+          end: od.itemCount + od.outfitCount + od.equipmentCount + od.hairCount + od.effectCount + od.distanceCount + od.beardCount + (od.attachmentCount ?? 0),
         };
       case 'beard':
         return {

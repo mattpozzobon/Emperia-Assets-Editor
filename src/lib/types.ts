@@ -3,7 +3,7 @@
  * Standalone — no game dependencies.
  */
 
-export type ThingCategory = 'item' | 'outfit' | 'equipment' | 'hair' | 'effect' | 'distance' | 'beard';
+export type ThingCategory = 'item' | 'outfit' | 'equipment' | 'hair' | 'effect' | 'distance' | 'beard' | 'attachments';
 export type LibraryCategory = ThingCategory | 'market' | 'attachments';
 
 export enum MaterialMaskKind {
@@ -95,6 +95,8 @@ export interface ObjectData {
   itemCount: number;
   outfitCount: number;
   equipmentCount: number;
+  attachmentCount?: number;
+  attachmentCatalog?: Map<number, AttachmentCatalogEntry>;
   hairCount: number;
   /** Beard appearances are appended after distance effects to preserve existing IDs. */
   beardCount: number;
@@ -127,6 +129,14 @@ export interface ObjectData {
 }
 
 export type SeatType = 'chair' | 'bench';
+
+export interface AttachmentCatalogEntry {
+  attachmentId: number;
+  name: string;
+  attachment: import('./attachments.generated').AttachmentDefinition;
+  /** Pending source record in legacy migrations; cleared after it is removed from Equipment. */
+  legacySourceEquipmentId?: number;
+}
 export type SeatDirection = 'north' | 'east' | 'south' | 'west';
 export type PoseAction = 'sit' | 'sit-ground' | 'attack';
 

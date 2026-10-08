@@ -187,7 +187,7 @@ export interface OBState {
   updateEquipmentCatalogEntry: (previous: EquipmentCatalogEntry, entry: EquipmentCatalogEntry) => void;
   addEquipmentCatalogEntry: (entry: EquipmentCatalogEntry) => void;
   removeEquipmentCatalogEntry: (entry: EquipmentCatalogEntry) => void;
-  updateAttachmentCatalogEntry: (entry: import('../lib/types').VisualEquipmentAppearance) => void;
+  updateAttachmentCatalogEntry: (entry: import('../lib/types').AttachmentCatalogEntry) => void;
   removeAttachmentCatalogEntry: (visualEquipmentId: number) => void;
   assignVisualEquipmentToItem: (
     visualEquipmentId: number,

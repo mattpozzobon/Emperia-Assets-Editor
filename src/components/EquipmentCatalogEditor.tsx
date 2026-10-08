@@ -343,7 +343,7 @@ function OutfitSpritePicker({
  * Renders a composite outfit thumbnail for an EOBJ equipment outfit ID.
  * Handles multi-tile outfits with outfit mask coloring.
  */
-export function OutfitThumbnail({ equipmentAppearanceId, size = 32, direction = 2, primaryColor }: { equipmentAppearanceId: number; size?: number; direction?: number; primaryColor?: number }) {
+export function OutfitThumbnail({ equipmentAppearanceId, attachmentId, size = 32, direction = 2, primaryColor }: { equipmentAppearanceId: number; attachmentId?: number; size?: number; direction?: number; primaryColor?: number }) {
   const objectData = useOBStore((s) => s.objectData);
   const spriteData = useOBStore((s) => s.spriteData);
   const spriteOverrides = useOBStore((s) => s.spriteOverrides);
@@ -363,13 +363,21 @@ export function OutfitThumbnail({ equipmentAppearanceId, size = 32, direction = 
     );
   }
 
-  const internalId = equipmentAppearanceIdToInternal(objectData, equipmentAppearanceId);
+  const internalId = attachmentId != null
+    ? objectData.itemCount + objectData.outfitCount + objectData.equipmentCount + objectData.hairCount + objectData.effectCount + objectData.distanceCount + objectData.beardCount + attachmentId
+    : equipmentAppearanceIdToInternal(objectData, equipmentAppearanceId);
   const thing = objectData.things.get(internalId);
   const url = renderOutfitThumb(objectData, spriteData, spriteOverrides, internalId, direction, primaryColor);
 
   const goToEquipment = () => {
     if (!thing) return;
     const { setCenterTab, setSelectedThingId } = useOBStore.getState();
+    if (attachmentId != null) {
+      useOBStore.setState({ activeCategory: 'attachments', activeLibrary: 'attachments', searchQuery: '', filterGroup: -1, equipmentFilter: 'all' });
+      setSelectedThingId(internalId);
+      setCenterTab('texture');
+      return;
+    }
     if (useOBStore.getState().activeCategory !== 'equipment') {
       useOBStore.setState({
         activeCategory: 'equipment',
@@ -400,7 +408,7 @@ export function OutfitThumbnail({ equipmentAppearanceId, size = 32, direction = 
       className="checkerboard rounded border border-emperia-border/50 overflow-hidden flex items-center justify-center hover:border-emperia-accent/60 transition-colors cursor-pointer shrink-0"
       style={{ width: size, height: size }}
       title={thing
-        ? `Go to equipment #${equipmentAppearanceId}`
+        ? attachmentId != null ? `Edit attachment #${attachmentId} texture` : `Go to equipment #${equipmentAppearanceId}`
         : `Equipment #${equipmentAppearanceId} has no appearance`}
     >
       {url ? (

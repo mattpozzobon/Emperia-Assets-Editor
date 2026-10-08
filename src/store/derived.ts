@@ -31,7 +31,9 @@ export function getDisplayId(objectData: ObjectData, internalId: number): number
   start += objectData.effectCount;
   if (internalId < start + objectData.distanceCount) return internalId - start + 1;
   start += objectData.distanceCount;
-  return internalId - start;
+  if (internalId < start + objectData.beardCount) return internalId - start;
+  start += objectData.beardCount;
+  return internalId - start + 1;
 }
 
 /** Derive filtered things list outside the store (safe for useMemo). */

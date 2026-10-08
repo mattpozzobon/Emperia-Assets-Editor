@@ -186,6 +186,7 @@ export function compileObjectData(
   w.writeUInt16(data.effectCount);
   w.writeUInt16(data.distanceCount);
   w.writeUInt16(data.beardCount ?? 0);
+  w.writeUInt16(data.attachmentCount ?? 0);
 
   const mappings = Array.from(itemAppearances.entries()).sort(([a], [b]) => a - b);
   w.writeUInt32(mappings.length);
@@ -384,8 +385,18 @@ export function compileObjectData(
   }
   w.writeString(JSON.stringify({ poseSets, profiles }));
 
+  for (let attachmentId = 1; attachmentId <= (data.attachmentCount ?? 0); attachmentId++) {
+    const entry = data.attachmentCatalog?.get(attachmentId);
+    if (!entry) throw new Error(`Missing attachment catalog entry ${attachmentId}`);
+    validateAttachmentDefinition(entry.attachment);
+    w.writeString(entry.name);
+    w.writeUInt16(entry.legacySourceEquipmentId ?? 0xFFFF);
+    w.writeUInt8(ATTACHMENT_POINTS.indexOf(entry.attachment.point) + 1);
+    for (const rank of entry.attachment.ranks) w.writeUInt8(rank);
+  }
+
   const totalCount = data.itemCount + data.outfitCount + data.equipmentCount
-    + data.hairCount + data.effectCount + data.distanceCount + (data.beardCount ?? 0);
+    + data.hairCount + data.effectCount + data.distanceCount + (data.beardCount ?? 0) + (data.attachmentCount ?? 0);
 
   for (let id = 100; id <= totalCount; id++) {
     const thing = data.things.get(id);
@@ -411,7 +422,7 @@ export function compileObjectData(
     // Re-serialize from parsed data for edited things
     writeFlags(w, thing.flags, data.version);
 
-    const isLayeredAppearance = thing.category === 'outfit' || thing.category === 'equipment' || thing.category === 'hair' || thing.category === 'beard';
+    const isLayeredAppearance = thing.category === 'outfit' || thing.category === 'equipment' || thing.category === 'hair' || thing.category === 'beard' || thing.category === 'attachments';
     const hasFrameGroups = data.version >= 1050 && isLayeredAppearance;
 
     if (hasFrameGroups) {

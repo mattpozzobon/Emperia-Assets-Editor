@@ -1,7 +1,7 @@
 const {colorAppearance, paletteAppearance, materialAppearance} = (()=>{require("../../Emperia-Client/scripts/test-support/register-client-typescript.cjs"); return require("../../Emperia-Server/src/shared/appearance.ts");})();
 const assert = require('node:assert/strict');
 const { ATTACHMENT_POINTS } = require('../../Emperia-Server/src/shared/attachments.ts');
-const attachmentValues = mask => Object.fromEntries(ATTACHMENT_POINTS.slice(0, 4).flatMap((point, index) => mask & (1 << index) ? [[point, {visualEquipmentId: 800 + index, appearance: paletteAppearance(88 + index)}]] : []));
+const attachmentValues = mask => Object.fromEntries(ATTACHMENT_POINTS.slice(0, 4).flatMap((point, index) => mask & (1 << index) ? [[point, {attachmentId: 1 + index, appearance: paletteAppearance(88 + index)}]] : []));
 require('../../Emperia-Client/scripts/test-support/register-client-typescript.cjs');
 const { writeOutfit, writeOutfitSlot, getOutfitWireSize } = require('../../Emperia-Server/src/platform/protocol/serialization/outfit-wire-format.ts');
 const { applyItemAppearanceReaders } = require('../../Emperia-Client/client/src/engine/network/readers/item-appearance-readers.ts');

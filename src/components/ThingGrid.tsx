@@ -85,15 +85,6 @@ export function ThingGrid() {
       itemLocalizations,
       activeLibrary === 'market',
     );
-    if (activeLibrary === 'attachments' || activeLibrary === 'equipment') {
-      const attachmentAppearanceIds = new Set(
-        Array.from(objectData?.visualEquipmentAppearances.values() ?? [])
-          .filter(entry => entry.attachment && entry.equipmentAppearanceId > 0)
-          .map(entry => entry.equipmentAppearanceId),
-      );
-      return filtered.filter(thing => attachmentAppearanceIds.has(getDisplayId(objectData!, thing.id))
-        === (activeLibrary === 'attachments'));
-    }
     if (activeLibrary !== 'market') return filtered;
     const marketItem = (thing: (typeof filtered)[number]) => {
       const itemId = appearanceToItemIds.get(thing.id);
@@ -263,7 +254,7 @@ export function ThingGrid() {
               thing.category === 'outfit'
               || thing.category === 'equipment'
               || thing.category === 'hair'
-              || thing.category === 'beard'
+              || thing.category === 'beard' || thing.category === 'attachments'
             ) && (previewGroup?.patternX ?? 0) > 2;
             const previewDirection = facesSouth ? 2 : 0;
             let previewFrame = 0;

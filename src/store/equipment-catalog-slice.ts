@@ -1,5 +1,5 @@
 import { defaultAttachmentDefinition, validateAttachmentDefinition } from '../lib/attachments.generated';
-import type { VisualEquipmentAppearance } from '../lib/types';
+import type { AttachmentCatalogEntry } from '../lib/types';
 /**
  * Equipment catalog actions. The EOBJ map is the only source of truth.
  */
@@ -51,26 +51,27 @@ function addVariant(catalog: Map<number, EquipmentAppearance>, entry: EquipmentC
 
 export function createEquipmentCatalogSlice(set: Set_, get: Get_) {
   return {
-    updateAttachmentCatalogEntry: (entry: VisualEquipmentAppearance) => {
+    updateAttachmentCatalogEntry: (entry: AttachmentCatalogEntry) => {
       const state = get();
       if (!state.objectData || !entry.attachment) return;
       validateAttachmentDefinition(entry.attachment);
-      if (!Number.isInteger(entry.visualEquipmentId) || entry.visualEquipmentId < 1 || entry.visualEquipmentId > 65535) throw new Error('Invalid visual ID');
-      if (!Number.isInteger(entry.equipmentAppearanceId) || entry.equipmentAppearanceId < 0 || entry.equipmentAppearanceId >= state.objectData.equipmentCount) throw new Error('Sprite is outside the equipment library');
-      const reserved = defaultAttachmentDefinition(entry.visualEquipmentId);
+      if (!Number.isInteger(entry.attachmentId) || entry.attachmentId < 1 || entry.attachmentId > 65535) throw new Error('Invalid attachment ID');
+      const reserved = defaultAttachmentDefinition(entry.attachmentId);
       if (reserved && reserved.point !== entry.attachment.point) throw new Error('Existing belt visual IDs keep their physical point');
-      if ([...state.objectData.visualEquipmentAppearances.values()].some(value => value.visualEquipmentId !== entry.visualEquipmentId && value.attachment?.point === entry.attachment!.point)) throw new Error('This attachment point already has a visual');
-      const visualEquipmentAppearances = new Map(state.objectData.visualEquipmentAppearances);
-      visualEquipmentAppearances.set(entry.visualEquipmentId, { ...entry, attachment: { ...entry.attachment, ranks: [...entry.attachment.ranks] } });
-      set({ objectData: { ...state.objectData, visualEquipmentAppearances }, dirty: true, editVersion: state.editVersion + 1 });
+      if ([...(state.objectData.attachmentCatalog?.values() ?? [])].some(value => value.attachmentId !== entry.attachmentId && value.attachment.point === entry.attachment.point)) throw new Error('This attachment point already has a visual');
+      if (entry.attachmentId === (state.objectData.attachmentCount ?? 0) + 1) get().addThing('attachments');
+      const current = get();
+      if (entry.attachmentId > (current.objectData?.attachmentCount ?? 0)) throw new Error('Attachment is outside its library');
+      const attachmentCatalog = new Map(current.objectData!.attachmentCatalog);
+      attachmentCatalog.set(entry.attachmentId, { ...entry, attachment: { ...entry.attachment, ranks: [...entry.attachment.ranks] } });
+      set({ objectData: { ...current.objectData!, attachmentCatalog }, dirty: true, editVersion: current.editVersion + 1 });
     },
-    removeAttachmentCatalogEntry: (visualEquipmentId: number) => {
-      if (defaultAttachmentDefinition(visualEquipmentId)) return;
+    removeAttachmentCatalogEntry: (attachmentId: number) => {
+      if (defaultAttachmentDefinition(attachmentId)) return;
       const state = get();
-      if (!state.objectData?.visualEquipmentAppearances.get(visualEquipmentId)?.attachment) return;
-      const visualEquipmentAppearances = new Map(state.objectData.visualEquipmentAppearances);
-      visualEquipmentAppearances.delete(visualEquipmentId);
-      set({ objectData: { ...state.objectData, visualEquipmentAppearances }, dirty: true, editVersion: state.editVersion + 1 });
+      if (!state.objectData?.attachmentCatalog?.has(attachmentId) || attachmentId !== state.objectData.attachmentCount) return;
+      const range = state.getCategoryRange('attachments');
+      if (range) get().removeThing(range.end);
     },
     updateEquipmentCatalogEntry: (previous: EquipmentCatalogEntry, entry: EquipmentCatalogEntry) => {
       mutateCatalog(set, get, (catalog) => {

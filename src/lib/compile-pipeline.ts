@@ -653,8 +653,8 @@ export async function runCompile(
       od.itemSeatDefinitions,
     );
     reparsedObject = parseObjectData(buf);
-    if (reparsedObject.formatVersion !== 18) {
-      throw new Error(`Generated EOBJ v${reparsedObject.formatVersion}; expected v18.`);
+    if (reparsedObject.formatVersion !== 19) {
+      throw new Error(`Generated EOBJ v${reparsedObject.formatVersion}; expected v19.`);
     }
     if (reparsedObject.itemAppearances.size !== itemAppearances.size) {
       throw new Error('Generated EOBJ item mapping is incomplete.');
@@ -678,6 +678,14 @@ export async function runCompile(
     }
     if (reparsedObject.beardDefinitions.size !== od.beardDefinitions.size || reparsedObject.beardCount !== od.beardCount) {
       throw new Error('Generated EOBJ beard catalog is incomplete.');
+    }
+    const attachmentMetadata = (data: typeof od) => Array.from(data.attachmentCatalog?.values() ?? [])
+      .sort((a, b) => a.attachmentId - b.attachmentId)
+      .map(entry => [entry.attachmentId, entry.name, entry.legacySourceEquipmentId,
+        entry.attachment.point, entry.attachment.ranks]);
+    if ((reparsedObject.attachmentCount ?? 0) !== (od.attachmentCount ?? 0)
+      || JSON.stringify(attachmentMetadata(reparsedObject)) !== JSON.stringify(attachmentMetadata(od))) {
+      throw new Error('Generated EOBJ attachment catalog is incomplete.');
     }
     if (reparsedObject.itemSeatDefinitions.size !== od.itemSeatDefinitions.size) {
       throw new Error('Generated EOBJ seat metadata is incomplete.');

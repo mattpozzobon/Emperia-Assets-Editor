@@ -37,42 +37,100 @@ for (const schema of [OutfitSchema, MonsterSchema, NPCSchema]) assert.ok(z.toJSO
 const legacyOutfit = { id: 128, attachments: { healthPotion: 1, manaPotion: 0, energyPotion: 0, bag: 1 } };
 assert.deepEqual(OutfitSchema.parse(legacyOutfit), legacyOutfit, 'validation preserves the authored input');
 const migratedOutfit = new ServerOutfit(OutfitSchema.parse(legacyOutfit));
-assert.equal(migratedOutfit.attachments.belt1.visualEquipmentId, 800);
-assert.equal(migratedOutfit.attachments.beltPouch.visualEquipmentId, 803);
-const canonicalOutfit = { id: 128, attachments: { belt2: { visualEquipmentId: 801, appearance: colorAppearance(0xFF0000) } } };
+assert.equal(migratedOutfit.attachments.belt1.attachmentId, 1);
+assert.equal(migratedOutfit.attachments.beltPouch, undefined);
+const canonicalOutfit = { id: 128, attachments: { belt2: { attachmentId: 2, appearance: colorAppearance(0xFF0000) } } };
 assert.deepEqual(new ServerOutfit(OutfitSchema.parse(canonicalOutfit)).attachments, canonicalOutfit.attachments);
-assert.equal(OutfitSchema.safeParse({ id: 128, attachments: { belt2: { visualEquipmentId: 0 } } }).success, false);
+assert.equal(OutfitSchema.safeParse({ id: 128, attachments: { belt2: { attachmentId: 0 } } }).success, false);
 
 const bytes = fs.readFileSync(require('node:path').resolve(__dirname, '../../Emperia-Assets/current/emperia.eobj'));
 const original = parseObjectData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
 for (let index = 0; index < 3; index++) {
-  const entry = original.visualEquipmentAppearances.get(800 + index);
-  assert.equal(entry.equipmentAppearanceId, 74 + index);
+  const entry = original.attachmentCatalog.get(1 + index);
+  assert.equal(entry.legacySourceEquipmentId, undefined);
   assert.equal(entry.attachment.point, `belt${index + 1}`);
 }
 // Add a future backpack attachment without changing the sprite art.
-original.visualEquipmentAppearances.set(804, { visualEquipmentId: 804, equipmentAppearanceId: 74, name: 'Backpack test', attachment: { point: 'backpackLeft', ranks: [3, 4, 4, 3] } });
+const bankStart = original.itemCount + original.outfitCount + original.equipmentCount + original.hairCount + original.effectCount + original.distanceCount + original.beardCount;
+const legacyObjects = new ObjectBuffer();
+legacyObjects.__load('legacy-attachment-test.eobj', bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+const equipmentStart = original.itemCount + original.outfitCount + 1;
+const equipment77 = original.things.get(equipmentStart + 74);
+assert.ok(equipment77 && equipment77.category === 'equipment');
+assert.deepEqual(equipment77.frameGroups.map(g => g.sprites), legacyObjects.getEquipment(78).frameGroups.map(g => g.sprites), 'former Equipment 77 retains its artwork');
+assert.equal(original.attachmentCount, 3);
+assert.equal(original.equipmentCount, 183, 'source records are removed from Equipment');
+assert.equal([...original.things.values()].filter(t => t.category === 'equipment').length, 183);
+for (let id = 1; id <= 3; id++) {
+  const source = legacyObjects.getEquipment(74 + id);
+  const attachment = original.things.get(bankStart + id);
+  assert.equal(attachment.category, 'attachments');
+  assert.deepEqual(attachment.frameGroups.map(g => g.sprites), source.frameGroups.map(g => g.sprites));
+  assert.equal(attachment.frameGroups[0].width, source.frameGroups[0].width);
+  assert.equal(attachment.frameGroups[0].height, source.frameGroups[0].height);
+  assert.equal(attachment.frameGroups[0].patternX, 4);
+}
+const migrate = require('../src/lib/attachment-library.ts').migrateAttachmentLibrary;
+assert.equal(migrate(original), original, 'migration is idempotent');
+// Recreate the first v19 layout with duplicated equipment sources, then reload it.
+const duplicated = { ...original, formatVersion: 19, equipmentCount: original.equipmentCount + 3,
+  things: new Map(), attachmentCatalog: new Map(), equipmentAppearances: new Map(), visualEquipmentAppearances: new Map() };
+for (const [id, thing] of original.things) {
+  const nextId = id >= equipmentStart + 74 ? id + 3 : id;
+  duplicated.things.set(nextId, { ...thing, id: nextId });
+}
+for (let id = 1; id <= 3; id++) {
+  const sourceId = equipmentStart + 73 + id;
+  duplicated.things.set(sourceId, { ...original.things.get(bankStart + id), id: sourceId, category: 'equipment' });
+  duplicated.attachmentCatalog.set(id, { ...original.attachmentCatalog.get(id), legacySourceEquipmentId: 73 + id });
+}
+for (const [id, entry] of original.equipmentAppearances) {
+  duplicated.equipmentAppearances.set(id, Object.fromEntries(Object.entries(entry).map(([key, value]) => [key, value >= 74 ? value + 3 : value])));
+}
+for (const [id, entry] of original.visualEquipmentAppearances) {
+  duplicated.visualEquipmentAppearances.set(id, { ...entry, equipmentAppearanceId: entry.equipmentAppearanceId >= 74 ? entry.equipmentAppearanceId + 3 : entry.equipmentAppearanceId });
+}
+const repaired = parseObjectData(compileObjectData(duplicated));
+assert.equal(repaired.equipmentCount, original.equipmentCount);
+assert.deepEqual(repaired.equipmentAppearances, original.equipmentAppearances);
+assert.deepEqual(repaired.visualEquipmentAppearances, original.visualEquipmentAppearances);
+assert.deepEqual(repaired.attachmentCatalog, original.attachmentCatalog);
+for (const [id, thing] of original.things) assert.deepEqual(repaired.things.get(id).frameGroups, thing.frameGroups);
+original.attachmentCount = 4;
+original.attachmentCatalog.set(4, { attachmentId: 4, name: 'Backpack test', attachment: { point: 'backpackLeft', ranks: [3, 4, 4, 3] } });
+original.things.set(bankStart + 4, { ...original.things.get(bankStart + 1), id: bankStart + 4 });
 const compiled = compileObjectData(original);
 const reparsed = parseObjectData(compiled);
 assert.equal(reparsed.formatVersion, EOBJ_FORMAT_VERSION);
+assert.deepEqual(reparsed.attachmentCatalog, original.attachmentCatalog);
+assert.deepEqual(reparsed.things.get(equipmentStart + 74).frameGroups, equipment77.frameGroups);
+assert.ok(![...reparsed.attachmentCatalog.values()].some(entry => entry.legacySourceEquipmentId === 77));
 for (const [id, value] of original.visualEquipmentAppearances) assert.deepEqual(JSON.parse(JSON.stringify(reparsed.visualEquipmentAppearances.get(id))), JSON.parse(JSON.stringify(value)));
 for (const [id, thing] of original.things) assert.deepEqual(reparsed.things.get(id).frameGroups, thing.frameGroups, `art ${id} must remain unchanged`);
 const objects = new ObjectBuffer(); objects.__load('attachment-test.eobj', compiled);
-assert.equal(objects.getVisualEquipmentAppearance(800), 75, 'runtime sprite IDs are one-based');
-assert.deepEqual(objects.getAttachmentDefinition(804), original.visualEquipmentAppearances.get(804).attachment);
-assert.ok(parseVisualCatalog(Buffer.from(compiled)).visualEquipmentIds.has(804));
+assert.equal(objects.getAttachmentAppearance(1), 1, 'attachments keep their own indices');
+assert.notEqual(objects.getAttachment(1), objects.getEquipment(75));
+assert.deepEqual(objects.getAttachment(1).frameGroups[0].sprites, legacyObjects.getEquipment(75).frameGroups[0].sprites);
+assert.equal(objects.getAttachmentAppearance(77), 0);
+assert.deepEqual(objects.getEquipment(objects.getVisualEquipmentAppearance(803)).frameGroups[0].sprites,
+  legacyObjects.getEquipment(78).frameGroups[0].sprites, 'ordinary equipment catalog references follow compaction');
+assert.deepEqual(objects.getAttachmentDefinition(4), original.attachmentCatalog.get(4).attachment);
+assert.ok(parseVisualCatalog(Buffer.from(compiled)));
 assert.ok(parseObjects(new Uint8Array(compiled)), 'data editor parses the new metadata without shifting records');
+assert.equal(legacyObjects.getAttachmentAppearance(1), 1);
+assert.ok(legacyObjects.getAttachment(3));
+assert.equal(legacyObjects.getAttachmentDefinition(77), undefined);
 setGameClient({ dataObjects: objects });
 
 const slot = (itemId, quantity = 1) => ({ itemId, quantity });
 const resolve = id => ({ 11: 'health', 12: 'mana', 13: 'stamina' })[id];
 const attachments = buildBeltAttachments([slot(11), slot(11), slot(12), slot(13), slot(13)], resolve);
-assert.equal(attachments.belt1.visualEquipmentId, 800);
-assert.equal(attachments.belt2.visualEquipmentId, 801);
-assert.equal(attachments.belt3.visualEquipmentId, 802);
+assert.equal(attachments.belt1.attachmentId, 1);
+assert.equal(attachments.belt2.attachmentId, 2);
+assert.equal(attachments.belt3.attachmentId, 3);
 assert.deepEqual(attachments.belt1.appearance, attachments.belt2.appearance, 'same type in different positions');
 assert.equal(attachments.belt3.appearance.primary, 0x0000FF);
-assert.deepEqual(buildBeltAttachments([slot(0), slot(12), slot(13, 0)], resolve), { belt1: null, belt2: { visualEquipmentId: 801, appearance: colorAppearance(0x0000FF) }, belt3: null });
+assert.deepEqual(buildBeltAttachments([slot(0), slot(12), slot(13, 0)], resolve), { belt1: null, belt2: { attachmentId: 2, appearance: colorAppearance(0x0000FF) }, belt3: null });
 assert.deepEqual(buildBeltAttachments([], resolve), { belt1: null, belt2: null, belt3: null });
 // Potion slots need not begin at container index zero.
 const items = [null, null, { id: 11, count: 3, isPotion: () => true }, null, { id: 12, count: 1, isPotion: () => true }];
@@ -88,7 +146,7 @@ const target = new Uint8Array(256); let written = 0;
 const writer = { writeUInt8(value) { target[written++] = value; }, writeUInt16(value) { this.writeUInt8(value); this.writeUInt8(value >>> 8); } };
 const outfitSlots = Array.from({ length: 10 }, () => ({ id: 0 }));
 for (let mask = 0; mask < 128; mask++) for (const appearance of values) {
-  const entries = Object.fromEntries(ATTACHMENT_POINTS.flatMap((point, index) => mask & (1 << index) ? [[point, { visualEquipmentId: 800 + index, appearance }]] : []));
+  const entries = Object.fromEntries(ATTACHMENT_POINTS.flatMap((point, index) => mask & (1 << index) ? [[point, { attachmentId: 1 + index, appearance }]] : []));
   const outfit = new ServerOutfit({ id: 128, sprites: outfitSlots, attachments: entries, lightSourceItemId: 65000 });
   written = 0; writeOutfit(writer, outfit); assert.equal(written, getOutfitWireSize(outfit));
   const size = written; writer.writeUInt16(0xBEEF);
@@ -100,7 +158,7 @@ for (let mask = 0; mask < 128; mask++) for (const appearance of values) {
 }
 const before = new ServerOutfit({ id: 128, attachments });
 const after = before.copy(); delete after.attachments.belt1; after.attachments.belt2.appearance = colorAppearance(0x00FF00);
-after.attachments.backpackLeft = { visualEquipmentId: 804, appearance: colorAppearance(0x123456) };
+after.attachments.backpackLeft = { attachmentId: 4, appearance: colorAppearance(0x123456) };
 assert.equal(before.attachments.belt2.appearance.primary, 0xFF0000, 'copies do not share mutable attachment appearances');
 assert.equal(getAppearanceDeltaMask(before, before.copy()), 0);
 assert.equal(getAppearanceDeltaMask(before, after), AppearanceDeltaFlag.Attachments);
@@ -122,13 +180,13 @@ CreatureProperties.prototype.updateOutfitAttachments.call(properties, { belt2: a
 assert.equal(publications, 0);
 CreatureProperties.prototype.updateOutfitAttachments.call(properties, { belt1: null, belt2: null, belt3: null });
 assert.equal(publications, 1); assert.ok(current.attachments.backpackLeft); assert.equal(current.attachments.belt2, undefined);
-assert.ok(normalizeAttachments({ healthPotion: 1, bag: 1 }).beltPouch, 'legacy authored outfits remain readable');
+assert.equal(normalizeAttachments({ healthPotion: 1, bag: 1 }).beltPouch, undefined, 'no automatic pouch binding');
 
 const clientA = new ClientOutfit({ id: 128, attachments: before.attachments });
 const clientB = new ClientOutfit({ id: 129, attachments: after.attachments });
 assert.notEqual(getOutfitVisualKey(clientA), getOutfitVisualKey(clientB));
 const maskedGroup = { width: 1, height: 1, layers: 2, animationLength: 1, getSpriteId: (_frame, _dir, _y, _z, layer) => layer === 1 ? 9001 : 9000 };
-const fakeObjects = { getVisualEquipmentAppearance: id => id, getEquipment: () => ({ getFrameGroup: () => maskedGroup, frameGroups: [maskedGroup] }) };
+const fakeObjects = { getAttachmentAppearance: id => id, getAttachment: () => ({ getFrameGroup: () => maskedGroup, frameGroups: [maskedGroup] }) };
 const tasks = [...iterateOutfitPrecacheTasks(clientA, fakeObjects)];
 assert.ok(tasks.length); assert.ok(tasks.every(task => task.maskId === 9001 && task.colorSlot === undefined && task.appearanceOverride));
 const sharedAppearance = colorAppearance(0xFF0000);
@@ -153,7 +211,7 @@ async function verifyEquipmentLifecycle() {
   const potion = (id, count = 1) => ({ id, count, isPotion: () => true });
   const heldItems = [null, null, potion(health, 2), potion(health), potion(mana)];
   let equippedBelt = { isContainer: () => true, container: { peekIndex: index => heldItems[index] }, getPotionSlotCount: () => 3, getPotionSlotIndex: index => index + 2 };
-  let outfit = new ServerOutfit({ id: 128, attachments: { backpackLeft: { visualEquipmentId: 804 } } });
+  let outfit = new ServerOutfit({ id: 128, attachments: { backpackLeft: { attachmentId: 4 } } });
   let appearances = 0, hotbarSends = 0;
   const properties = { getProperty: () => outfit, setProperty: (_key, value) => { outfit = value; appearances++; } };
   properties.updateOutfitAttachments = updates => CreatureProperties.prototype.updateOutfitAttachments.call(properties, updates);
@@ -161,7 +219,7 @@ async function verifyEquipmentLifecycle() {
   Object.assign(equipment, { __retired: false, __beltHotbarState: new BeltHotbarState(), __player: { properties, io: { sendBeltHotbarSlots: () => hotbarSends++ } }, peekIndex: () => equippedBelt });
   equipment.notifyBeltContentsChanged(); equipment.notifyBeltContentsChanged(); await Promise.resolve();
   assert.equal(appearances, 1); assert.equal(hotbarSends, 1, 'same mutation batch publishes once');
-  assert.equal(outfit.attachments.belt2.visualEquipmentId, 801);
+  assert.equal(outfit.attachments.belt2.attachmentId, 2);
   heldItems[2].count = 1; equipment.notifyBeltContentsChanged(); await Promise.resolve();
   assert.equal(appearances, 1, 'quantity changes keep the same rendered attachment');
   heldItems[2] = null; equipment.notifyBeltContentsChanged(); await Promise.resolve();
@@ -169,7 +227,7 @@ async function verifyEquipmentLifecycle() {
   heldItems[3] = potion(mana); heldItems[4] = potion(health); equipment.notifyBeltContentsChanged(); await Promise.resolve();
   assert.equal(outfit.attachments.belt2.appearance.primary, 0x0000FF); assert.equal(outfit.attachments.belt3.appearance.primary, 0xFF0000);
   equippedBelt = null; equipment.notifyBeltContentsChanged(); await Promise.resolve();
-  assert.deepEqual(outfit.attachments, { backpackLeft: { visualEquipmentId: 804 } }, 'unequipping belt keeps independent backpack attachments');
+  assert.deepEqual(outfit.attachments, { backpackLeft: { attachmentId: 4 } }, 'unequipping belt keeps independent backpack attachments');
   const sends = hotbarSends;
   equipment.notifyBeltContentsChanged(); equipment.retire(); await Promise.resolve();
   assert.equal(hotbarSends, sends, 'retired equipment does not publish delayed changes');

@@ -62,7 +62,12 @@ export function SpritePreview() {
   const activeColorMaskRegion = useOBStore((s) => s.activeColorMaskRegion);
   const editableMaskLayer = thing?.materialMaskLayer ?? getColorMaskLayer(thing);
   const activeMaskColor = thing?.materialMaskLayer != null ? MATERIAL_MASK_COLORS[activeMaterialMaskKind] : COLOR_MASK_COLORS[activeColorMaskRegion];
-  const [previewMode, setPreviewMode] = useState(false); // true = single direction/pattern preview
+  const [previewMode, setPreviewMode] = useState(() => (
+    thing?.category === 'outfit' || thing?.category === 'equipment'
+    || thing?.category === 'hair' || thing?.category === 'beard'
+    || thing?.category === 'attachments' || thing?.category === 'effect'
+    || thing?.category === 'distance'
+  )); // true = single direction/pattern preview
   const activeDirection = useOBStore((s) => s.activeDirection);
   const setActiveDirection = (direction: number) => useOBStore.setState({ activeDirection: direction });
   const activePatternY = useOBStore((s) => s.activePatternY);
@@ -85,12 +90,13 @@ export function SpritePreview() {
   const lastMaskPaintPointRef = useRef<{ slotIdx: number; x: number; y: number } | null>(null);
   const suppressCanvasClickRef = useRef(false);
 
-  const category = useOBStore((s) => s.activeCategory);
+  const activeCategory = useOBStore((s) => s.activeCategory);
+  const category = thing?.category ?? activeCategory;
   const isDirectionalAppearance = (
     category === 'outfit'
     || category === 'equipment'
     || category === 'hair'
-    || category === 'beard'
+    || category === 'beard' || category === 'attachments'
   );
   const isEffect = category === 'effect';
   const isDistance = category === 'distance';

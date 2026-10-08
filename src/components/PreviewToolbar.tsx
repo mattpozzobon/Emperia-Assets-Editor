@@ -257,7 +257,7 @@ export function PreviewToolbar({
       )}
 
       {/* Directional appearances can preview against character #134 or a pinned appearance. */}
-      {(category === 'outfit' || category === 'equipment' || category === 'hair' || category === 'beard') && objectData && (
+      {(category === 'outfit' || category === 'equipment' || category === 'hair' || category === 'beard' || category === 'attachments') && objectData && (
         <>
           <div className="flex items-center gap-0.5">
             {baseOutfitId != null && baseOutfitId !== thing.id && (
