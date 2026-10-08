@@ -11,6 +11,7 @@ import {
 } from '../lib/dir-handle-store';
 import { ITEM_LOCALES, type ItemCatalogFile, type ItemLocale } from '../lib/types';
 import { ITEM_CATALOG_FILE, parseItemCatalog } from '../lib/item-localization';
+import { EOBJ_FORMAT_VERSION } from '../lib/emperia-format';
 
 export function FileDropZone() {
   const loadFiles = useOBStore((s) => s.loadFiles);
@@ -227,7 +228,7 @@ export function FileDropZone() {
           <h1 className="text-3xl font-bold text-emperia-text mb-2">
             Emperia Assets Editor
           </h1>
-          <p className="text-emperia-muted text-sm">v1.0.0 — Web Edition</p>
+          <p className="text-emperia-muted text-sm">v{EOBJ_FORMAT_VERSION} — Web Edition</p>
         </div>
 
         {loading ? (

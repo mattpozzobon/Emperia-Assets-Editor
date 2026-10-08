@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Circle, CloudUpload, Download, FolderOpen, Info, Loader2, Redo2, Undo2 } from 'lucide-react';
+import { Circle, CloudUpload, Download, FolderOpen, Loader2, Redo2, Undo2 } from 'lucide-react';
 import { useOBStore } from '../store';
 import { INITIAL_COMPILE_STATE, runCompile } from '../lib/compile-pipeline';
 import type { CompileState } from '../lib/compile-pipeline';
 import { CompileModal } from './CompileModal';
 import { LibraryTabs } from './LibraryTabs';
+import { EOBJ_FORMAT_VERSION } from '../lib/emperia-format';
 
 export function Header() {
   const objectData = useOBStore((state) => state.objectData);
@@ -102,7 +103,7 @@ export function Header() {
         <span className="text-sm font-bold text-emperia-text tracking-wide">
           Emperia Assets Editor
         </span>
-        <span className="text-xs text-emperia-muted">v1.0.0</span>
+        <span className="text-xs text-emperia-muted">v{objectData?.formatVersion ?? EOBJ_FORMAT_VERSION}</span>
 
         {dirty && !compile.active && (
           <span title="Unsaved changes">
@@ -116,15 +117,6 @@ export function Header() {
 
         {objectData && (
           <>
-            <div className="flex items-center gap-3 text-xs text-emperia-muted mr-2">
-              <span className="flex items-center gap-1">
-                <Info className="w-3 h-3" />
-                EOBJ v{objectData.formatVersion}
-              </span>
-              <span>Content v{objectData.version}</span>
-              <span>{objectData.things.size} objects</span>
-            </div>
-
             <button
               onClick={undo}
               disabled={undoStack.length === 0 || compile.active}

@@ -4,7 +4,7 @@
  */
 
 export type ThingCategory = 'item' | 'outfit' | 'equipment' | 'hair' | 'effect' | 'distance' | 'beard';
-export type LibraryCategory = ThingCategory | 'market';
+export type LibraryCategory = ThingCategory | 'market' | 'attachments';
 
 export enum MaterialMaskKind {
   Metal = 1,
@@ -231,6 +231,7 @@ export interface VisualEquipmentAppearance {
   visualEquipmentId: number;
   equipmentAppearanceId: number;
   name: string;
+  attachment?: import('./attachments.generated').AttachmentDefinition;
 }
 
 export interface SpriteData {

@@ -1,3 +1,5 @@
+import { defaultAttachmentDefinition, validateAttachmentDefinition } from '../lib/attachments.generated';
+import type { VisualEquipmentAppearance } from '../lib/types';
 /**
  * Equipment catalog actions. The EOBJ map is the only source of truth.
  */
@@ -49,6 +51,27 @@ function addVariant(catalog: Map<number, EquipmentAppearance>, entry: EquipmentC
 
 export function createEquipmentCatalogSlice(set: Set_, get: Get_) {
   return {
+    updateAttachmentCatalogEntry: (entry: VisualEquipmentAppearance) => {
+      const state = get();
+      if (!state.objectData || !entry.attachment) return;
+      validateAttachmentDefinition(entry.attachment);
+      if (!Number.isInteger(entry.visualEquipmentId) || entry.visualEquipmentId < 1 || entry.visualEquipmentId > 65535) throw new Error('Invalid visual ID');
+      if (!Number.isInteger(entry.equipmentAppearanceId) || entry.equipmentAppearanceId < 0 || entry.equipmentAppearanceId >= state.objectData.equipmentCount) throw new Error('Sprite is outside the equipment library');
+      const reserved = defaultAttachmentDefinition(entry.visualEquipmentId);
+      if (reserved && reserved.point !== entry.attachment.point) throw new Error('Existing belt visual IDs keep their physical point');
+      if ([...state.objectData.visualEquipmentAppearances.values()].some(value => value.visualEquipmentId !== entry.visualEquipmentId && value.attachment?.point === entry.attachment!.point)) throw new Error('This attachment point already has a visual');
+      const visualEquipmentAppearances = new Map(state.objectData.visualEquipmentAppearances);
+      visualEquipmentAppearances.set(entry.visualEquipmentId, { ...entry, attachment: { ...entry.attachment, ranks: [...entry.attachment.ranks] } });
+      set({ objectData: { ...state.objectData, visualEquipmentAppearances }, dirty: true, editVersion: state.editVersion + 1 });
+    },
+    removeAttachmentCatalogEntry: (visualEquipmentId: number) => {
+      if (defaultAttachmentDefinition(visualEquipmentId)) return;
+      const state = get();
+      if (!state.objectData?.visualEquipmentAppearances.get(visualEquipmentId)?.attachment) return;
+      const visualEquipmentAppearances = new Map(state.objectData.visualEquipmentAppearances);
+      visualEquipmentAppearances.delete(visualEquipmentId);
+      set({ objectData: { ...state.objectData, visualEquipmentAppearances }, dirty: true, editVersion: state.editVersion + 1 });
+    },
     updateEquipmentCatalogEntry: (previous: EquipmentCatalogEntry, entry: EquipmentCatalogEntry) => {
       mutateCatalog(set, get, (catalog) => {
         removeVariant(catalog, previous);
@@ -69,7 +92,7 @@ export function createEquipmentCatalogSlice(set: Set_, get: Get_) {
       const state = get();
       if (!state.objectData) return;
       const visual = state.objectData.visualEquipmentAppearances.get(visualEquipmentId);
-      if (!visual) return;
+      if (!visual || visual.attachment) return;
 
       const equipmentAppearances = new Map(state.objectData.equipmentAppearances);
       equipmentAppearances.set(itemId, {

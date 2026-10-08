@@ -11,6 +11,7 @@ import { ThingSpriteGrid } from './components/ThingSpriteGrid';
 import { ObjectSlots } from './components/ObjectSlots';
 import { LayerPanel } from './components/LayerPanel';
 import { EquipmentCatalogEditor } from './components/EquipmentCatalogEditor';
+import { AttachmentCatalogEditor } from './components/AttachmentCatalogEditor';
 import { HairEditor } from './components/HairEditor';
 import { BeardEditor } from './components/BeardEditor';
 import { PoseLab } from './components/PoseLab';
@@ -217,7 +218,7 @@ export default function App() {
               </div>
             </div>
           )}
-          {activeLibrary === 'equipment' && (
+          {activeLibrary === 'equipment' && centerTab !== 'poseLab' && (
             <div className="flex items-center border-b border-emperia-border shrink-0">
               {([
                 { key: 'equipment', label: 'Equipment' },
@@ -241,7 +242,7 @@ export default function App() {
               </div>
             </div>
           )}
-          {(activeLibrary === 'hair' || activeLibrary === 'beard') && centerTab !== 'poseLab' && (
+          {(activeLibrary === 'hair' || activeLibrary === 'beard' || activeLibrary === 'attachments') && centerTab !== 'poseLab' && (
             <div className="flex items-center border-b border-emperia-border shrink-0">
               {([
                 { key: activeLibrary, label: 'Information' },
@@ -275,6 +276,7 @@ export default function App() {
             )}
             {activeLibrary === 'item' && centerTab === 'localization' && <LocalizationEditor />}
             {activeLibrary === 'equipment' && centerTab === 'equipment' && <EquipmentCatalogEditor />}
+            {activeLibrary === 'attachments' && centerTab === 'attachments' && <AttachmentCatalogEditor />}
             {activeLibrary === 'hair' && centerTab === 'hair' && <HairEditor />}
             {activeLibrary === 'beard' && centerTab === 'beard' && <BeardEditor />}
             {centerTab === 'poseLab' && <PoseLab />}

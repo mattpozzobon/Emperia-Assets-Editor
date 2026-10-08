@@ -291,6 +291,22 @@ export const useOBStore = create<OBState>((set, get) => ({
 
   setActiveLibrary: (cat) => {
     const current = get();
+    if (cat === 'attachments') {
+      const range = current.getCategoryRange('equipment');
+      const attachment = Array.from(current.objectData?.visualEquipmentAppearances.values() ?? [])
+        .find(entry => entry.attachment && entry.equipmentAppearanceId > 0);
+      set({
+        activeCategory: 'equipment',
+        activeLibrary: 'attachments',
+        centerTab: 'attachments',
+        selectedThingId: range && attachment ? range.start + attachment.equipmentAppearanceId : null,
+        selectedThingIds: new Set(),
+        searchQuery: '',
+        filterGroup: -1,
+        equipmentFilter: 'all',
+      });
+      return;
+    }
     if (cat === 'item' && current.activeLibrary === 'market') {
       set({
         activeLibrary: 'item',
@@ -325,7 +341,7 @@ export const useOBStore = create<OBState>((set, get) => ({
       return;
     }
     get().setActiveCategory(cat);
-    set({ centerTab: cat === 'hair' || cat === 'beard' ? cat : 'texture' });
+    set({ centerTab: cat === 'hair' || cat === 'beard' || cat === 'equipment' ? cat : 'texture' });
   },
 
   setSelectedThingId: (id) => set({ selectedThingId: id, selectedThingIds: new Set() }),

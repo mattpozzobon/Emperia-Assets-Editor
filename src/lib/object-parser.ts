@@ -1,3 +1,4 @@
+import { ATTACHMENT_POINTS, defaultAttachmentDefinition, validateAttachmentDefinition } from './attachments.generated';
 /**
  * Parses .eobj / .dat files into ObjectData.
  * Ported from Emperia-Client object-buffer.ts — standalone, no game deps.
@@ -411,11 +412,21 @@ export function parseObjectData(buffer: ArrayBuffer): ObjectData {
       const visualCount = packet.readUInt16();
       for (let index = 0; index < visualCount; index++) {
         const visualEquipmentId = packet.readUInt16();
-        visualEquipmentAppearances.set(visualEquipmentId, {
-          visualEquipmentId,
-          equipmentAppearanceId: packet.readUInt16(),
-          name: packet.readString(),
-        });
+        const entry: import('./types').VisualEquipmentAppearance = {
+          visualEquipmentId, equipmentAppearanceId: packet.readUInt16(), name: packet.readString(),
+        };
+        if (formatVersion >= 18) {
+          const pointCode = packet.readUInt8();
+          if (pointCode > ATTACHMENT_POINTS.length) throw new Error('Unknown attachment point');
+          if (pointCode) {
+            entry.attachment = { point: ATTACHMENT_POINTS[pointCode - 1], ranks: [packet.readUInt8(), packet.readUInt8(), packet.readUInt8(), packet.readUInt8()] };
+            validateAttachmentDefinition(entry.attachment);
+          }
+        } else {
+          entry.attachment = defaultAttachmentDefinition(visualEquipmentId);
+          if (visualEquipmentId >= 800 && visualEquipmentId <= 802) entry.name = `Belt potion position ${visualEquipmentId - 799}`;
+        }
+        visualEquipmentAppearances.set(visualEquipmentId, entry);
       }
     }
 
@@ -750,7 +761,7 @@ function migrateVisualEquipment(data: ObjectData): ObjectData {
   migrated.forEach(({ visualEquipmentId, name, outfitAppearanceId }, index) => {
     const equipmentAppearanceId = data.equipmentCount + index;
     copyLocalAppearance('equipment', outfitAppearanceId, outfitStart);
-    visualEquipmentAppearances.set(visualEquipmentId, { visualEquipmentId, equipmentAppearanceId, name });
+    visualEquipmentAppearances.set(visualEquipmentId, { visualEquipmentId, equipmentAppearanceId, name, attachment: defaultAttachmentDefinition(visualEquipmentId) });
   });
 
   for (let appearanceId = 0; appearanceId < data.hairCount; appearanceId++) {

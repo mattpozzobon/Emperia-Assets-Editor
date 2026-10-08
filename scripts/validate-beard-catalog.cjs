@@ -33,7 +33,7 @@ original.beardDefinitions.set(newBeardId, {
 });
 const bytes = compileObjectData(original);
 const reparsed = parseObjectData(bytes);
-assert.equal(reparsed.formatVersion, 17);
+assert.equal(reparsed.formatVersion, 18);
 assert.equal(reparsed.beardCount, newAppearanceId + 1);
 assert.equal(reparsed.beardDefinitions.get(newBeardId)?.name, 'Test Beard');
 assert.equal(reparsed.things.get(beardAppearanceId)?.category, 'beard');
@@ -72,4 +72,4 @@ const invalid = normalizeNPCStatistics({ outfit: { sprites: Array.from({ length:
   id: index === SlotKey.Beard ? 65535 : 0,
 })) } });
 assert.equal(invalid.outfit.sprites[SlotKey.Beard].id, 0, 'unknown NPC beard is rejected');
-console.log('Verified EOBJ v17 beard catalog and appearance in all editors, client, and server.');
+console.log('Verified EOBJ v18 beard catalog and appearance in all editors, client, and server.');

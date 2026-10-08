@@ -653,8 +653,8 @@ export async function runCompile(
       od.itemSeatDefinitions,
     );
     reparsedObject = parseObjectData(buf);
-    if (reparsedObject.formatVersion !== 17) {
-      throw new Error(`Generated EOBJ v${reparsedObject.formatVersion}; expected v17.`);
+    if (reparsedObject.formatVersion !== 18) {
+      throw new Error(`Generated EOBJ v${reparsedObject.formatVersion}; expected v18.`);
     }
     if (reparsedObject.itemAppearances.size !== itemAppearances.size) {
       throw new Error('Generated EOBJ item mapping is incomplete.');

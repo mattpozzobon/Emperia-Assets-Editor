@@ -9,7 +9,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Search, Plus, Trash2, X, ChevronDown } from 'lucide-react';
 import { useOBStore, getDisplayId } from '../store';
 import { decodeSprite, getSpriteDataUrl } from '../lib/sprite-decoder';
-import { applyOutfitMask } from '../lib/outfit-colors';
+import { applyOutfitMask, OUTFIT_PALETTE } from '../lib/outfit-colors';
 import type {
   EquipSlotFilter,
   EquipmentCatalogEntry,
@@ -149,8 +149,9 @@ function renderOutfitThumb(
   spriteOverrides: Map<number, ImageData>,
   internalId: number,
   direction: number = 2,
+  primaryColor?: number,
 ): string | null {
-  const cacheKey = `${internalId}:${direction}`;
+  const cacheKey = `${internalId}:${direction}:${primaryColor ?? -1}`;
   const cached = outfitThumbCache.get(cacheKey);
   if (cached) return cached;
 
@@ -169,7 +170,7 @@ function renderOutfitThumb(
 
   const px = Math.min(direction, fg.patternX - 1);
   const hasOutfitMask = fg.layers >= 2;
-  const defaultColors = { primary: 0, secondary: 0 };
+  const defaultColors = { primary: primaryColor === undefined ? 0 : Math.max(0, OUTFIT_PALETTE.indexOf(primaryColor)), secondary: 0 };
 
   for (let ty = 0; ty < fg.height; ty++) {
     for (let tx = 0; tx < fg.width; tx++) {
@@ -342,7 +343,7 @@ function OutfitSpritePicker({
  * Renders a composite outfit thumbnail for an EOBJ equipment outfit ID.
  * Handles multi-tile outfits with outfit mask coloring.
  */
-function OutfitThumbnail({ equipmentAppearanceId, size = 32, direction = 2 }: { equipmentAppearanceId: number; size?: number; direction?: number }) {
+export function OutfitThumbnail({ equipmentAppearanceId, size = 32, direction = 2, primaryColor }: { equipmentAppearanceId: number; size?: number; direction?: number; primaryColor?: number }) {
   const objectData = useOBStore((s) => s.objectData);
   const spriteData = useOBStore((s) => s.spriteData);
   const spriteOverrides = useOBStore((s) => s.spriteOverrides);
@@ -364,7 +365,7 @@ function OutfitThumbnail({ equipmentAppearanceId, size = 32, direction = 2 }: { 
 
   const internalId = equipmentAppearanceIdToInternal(objectData, equipmentAppearanceId);
   const thing = objectData.things.get(internalId);
-  const url = renderOutfitThumb(objectData, spriteData, spriteOverrides, internalId, direction);
+  const url = renderOutfitThumb(objectData, spriteData, spriteOverrides, internalId, direction, primaryColor);
 
   const goToEquipment = () => {
     if (!thing) return;
@@ -379,7 +380,7 @@ function OutfitThumbnail({ equipmentAppearanceId, size = 32, direction = 2 }: { 
       });
     }
     setSelectedThingId(internalId);
-    setCenterTab('equipment');
+    setCenterTab(useOBStore.getState().activeLibrary === 'attachments' ? 'texture' : 'equipment');
   };
 
   return (
@@ -1018,7 +1019,7 @@ export function EquipmentCatalogEditor() {
     [objectData, editVersion],
   );
   const visualEntries = useMemo(
-    () => Array.from(objectData?.visualEquipmentAppearances.values() ?? [])
+    () => Array.from(objectData?.visualEquipmentAppearances.values() ?? []).filter(entry => !entry.attachment)
       .sort((a, b) => a.visualEquipmentId - b.visualEquipmentId),
     [objectData, editVersion],
   );

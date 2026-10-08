@@ -1,6 +1,7 @@
 const {colorAppearance, paletteAppearance, materialAppearance} = (()=>{require("../../Emperia-Client/scripts/test-support/register-client-typescript.cjs"); return require("../../Emperia-Server/src/shared/appearance.ts");})();
 const assert = require('node:assert/strict');
-const { performance } = require('node:perf_hooks');
+const { ATTACHMENT_POINTS } = require('../../Emperia-Server/src/shared/attachments.ts');
+const attachmentValues = mask => Object.fromEntries(ATTACHMENT_POINTS.slice(0, 4).flatMap((point, index) => mask & (1 << index) ? [[point, {visualEquipmentId: 800 + index, appearance: paletteAppearance(88 + index)}]] : []));
 require('../../Emperia-Client/scripts/test-support/register-client-typescript.cjs');
 const { writeOutfit, writeOutfitSlot, getOutfitWireSize } = require('../../Emperia-Server/src/platform/protocol/serialization/outfit-wire-format.ts');
 const { applyItemAppearanceReaders } = require('../../Emperia-Client/client/src/engine/network/readers/item-appearance-readers.ts');
@@ -19,7 +20,7 @@ const reader = {
 const sprites = Array.from({length:10}, (_,i)=>({id:300+i, appearance:i%3===0?materialAppearance(7,0x123456):paletteAppearance(22+i,i%2?58:22+i), rarity:2,level:8}));
 let cases = 0;
 for (let mask=0;mask<1024;mask++) for(let extras=0;extras<32;extras++) for(const renderHelmet of [false,true]) {
- const outfit={id:134, renderHelmet, sprites, attachments:{healthPotion:extras&1?1:0,manaPotion:extras&2?2:0,energyPotion:extras&4?3:0,bag:extras&8?255:0},lightSourceItemId:extras&16?65535:0};
+ const outfit={id:134, renderHelmet, sprites, attachments:attachmentValues(extras),lightSourceItemId:extras&16?65535:0};
  written=read=0;
  writeOutfit(writer,outfit,mask);
  assert.equal(written,getOutfitWireSize(outfit,mask));
@@ -40,7 +41,7 @@ for (let mask=0;mask<1024;mask++) for(let extras=0;extras<32;extras++) for(const
  });
  cases++;
 }
-const empty={id:134,renderHelmet:true,sprites:sprites.map(()=>({id:0})),attachments:{healthPotion:0,manaPotion:0,energyPotion:0,bag:0},lightSourceItemId:0};
+const empty={id:134,renderHelmet:true,sprites:sprites.map(()=>({id:0})),attachments:{},lightSourceItemId:0};
 written=read=0;writeOutfit(writer,empty);assert.equal(written,4);assert.equal(proto.readOutfit.call(reader).sprites.filter(s=>s.id).length,0);
 assert.deepEqual(Array.from(bytes.subarray(0,4)),[134,0,0,4]);
 const sparse={...empty,sprites:empty.sprites.map((s,i)=>i===8?{id:65535,directAppearance:true}:s)};
@@ -63,26 +64,7 @@ for (const appearance of [undefined, materialAppearance(7), materialAppearance(7
   assert.equal(read,size);assert.equal(reader.readUInt16(),0xBEEF);
  }
 
-function oldWrite(writer,outfit,mask=511) {
- writer.writeUInt16(outfit.id);writer.writeUInt8(Number(outfit.renderHelmet));
- let slots=0;for(let i=0;i<9;i++)if((mask&(1<<i))&&outfit.sprites[i].id>0)slots|=1<<i;
- writer.writeUInt16(slots);
- for(let i=0;i<9;i++)if(slots&(1<<i))writeOutfitSlot(writer,outfit.sprites[i]);
- const a=outfit.attachments;writer.writeUInt8(a.healthPotion);writer.writeUInt8(a.manaPotion);writer.writeUInt8(a.energyPotion);writer.writeUInt8(a.bag);writer.writeUInt16(outfit.lightSourceItemId);
-}
-const typical={...empty,sprites:sprites.map((s,i)=>i<5?{id:s.id,appearance:s.appearance}:{id:0})};
-const dense={...empty,sprites,attachments:{healthPotion:1,manaPotion:2,energyPotion:3,bag:4},lightSourceItemId:100};
-const examples=[empty,typical,dense].map((outfit,i)=>{
- written=0;oldWrite(writer,outfit);const before=written;written=0;writeOutfit(writer,outfit);
- return {name:['empty','five-coloured-pieces','all-slots-and-extras'][i],before,after:written};
+const examples = [empty, {...empty,sprites}, {...empty,sprites,attachments:attachmentValues(15)}].map((outfit, index) => {
+ written=0;writeOutfit(writer,outfit);return {name:['empty','ten-pieces','ten-pieces-four-attachments'][index],bytes:written};
 });
-function benchmark(fn) {
- const times=[];let checksum=0;
- for(let run=0;run<7;run++) {
-  const start=performance.now();
-  for(let i=0;i<100000;i++){written=0;fn(writer,i%3===0?empty:i%3===1?typical:dense);checksum+=written;}
-  if(run>1)times.push(performance.now()-start);
- }
- times.sort((a,b)=>a-b);assert.ok(checksum>0);return Number(times[2].toFixed(2));
-}
-console.log(JSON.stringify({roundTrips:cases,examples,medianMsPer100k:{old:benchmark(oldWrite),compact:benchmark(writeOutfit)}},null,2));
+console.log(JSON.stringify({roundTrips:cases,examples},null,2));

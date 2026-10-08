@@ -19,8 +19,8 @@ if (!thing || thing.category !== 'item' || thing.frameGroups.some((group) => gro
 
 thing.materialMaskLayer = 1;
 const roundTrip = parseObjectData(compileObjectData(parsed));
-if (roundTrip.formatVersion !== 17) {
-  throw new Error(`Expected EOBJ v17, received v${roundTrip.formatVersion}`);
+if (roundTrip.formatVersion !== 18) {
+  throw new Error(`Expected EOBJ v18, received v${roundTrip.formatVersion}`);
 }
 if (roundTrip.things.get(appearanceId)?.materialMaskLayer !== 1) {
   throw new Error('Material mask layer did not survive the EOBJ round-trip');

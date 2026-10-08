@@ -106,7 +106,7 @@ const source: ObjectData = {
 };
 
 const parsed = parseObjectData(compileObjectData(source));
-if (parsed.formatVersion !== 17) throw new Error(`Expected EOBJ v17, got v${parsed.formatVersion}`);
+if (parsed.formatVersion !== 18) throw new Error(`Expected EOBJ v18, got v${parsed.formatVersion}`);
 for (const [itemId, identity] of itemIdentities) {
   if (parsed.itemIdentities.get(itemId) !== identity) {
     throw new Error(`Identity round-trip failed for item ${itemId}: ${identity}`);

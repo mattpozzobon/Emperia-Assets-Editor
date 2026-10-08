@@ -67,7 +67,7 @@ export interface OBState {
   };
 
   // UI state
-  centerTab: 'texture' | 'properties' | 'localization' | 'equipment' | 'hair' | 'beard' | 'poseLab';
+  centerTab: 'texture' | 'properties' | 'localization' | 'equipment' | 'hair' | 'beard' | 'attachments' | 'poseLab';
   activeCategory: ThingCategory;
   activeLibrary: LibraryCategory;
   selectedThingId: number | null;
@@ -187,6 +187,8 @@ export interface OBState {
   updateEquipmentCatalogEntry: (previous: EquipmentCatalogEntry, entry: EquipmentCatalogEntry) => void;
   addEquipmentCatalogEntry: (entry: EquipmentCatalogEntry) => void;
   removeEquipmentCatalogEntry: (entry: EquipmentCatalogEntry) => void;
+  updateAttachmentCatalogEntry: (entry: import('../lib/types').VisualEquipmentAppearance) => void;
+  removeAttachmentCatalogEntry: (visualEquipmentId: number) => void;
   assignVisualEquipmentToItem: (
     visualEquipmentId: number,
     itemId: number,

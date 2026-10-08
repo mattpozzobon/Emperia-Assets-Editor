@@ -85,6 +85,15 @@ export function ThingGrid() {
       itemLocalizations,
       activeLibrary === 'market',
     );
+    if (activeLibrary === 'attachments' || activeLibrary === 'equipment') {
+      const attachmentAppearanceIds = new Set(
+        Array.from(objectData?.visualEquipmentAppearances.values() ?? [])
+          .filter(entry => entry.attachment && entry.equipmentAppearanceId > 0)
+          .map(entry => entry.equipmentAppearanceId),
+      );
+      return filtered.filter(thing => attachmentAppearanceIds.has(getDisplayId(objectData!, thing.id))
+        === (activeLibrary === 'attachments'));
+    }
     if (activeLibrary !== 'market') return filtered;
     const marketItem = (thing: (typeof filtered)[number]) => {
       const itemId = appearanceToItemIds.get(thing.id);

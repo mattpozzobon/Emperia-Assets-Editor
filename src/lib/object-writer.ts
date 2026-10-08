@@ -1,14 +1,13 @@
+import { ATTACHMENT_POINTS, validateAttachmentDefinition } from './attachments.generated';
 /**
  * Compiles ObjectData back to .eobj binary format.
  * Inverse of object-parser.ts — writes Emperia header + flags + frame groups.
  */
 import PacketWriter from './packet-writer';
-import { EMPERIA_MAGIC, EmperiaFileType } from './emperia-format';
+import { EMPERIA_MAGIC, EmperiaFileType, EOBJ_FORMAT_VERSION } from './emperia-format';
 import type { ObjectData, ThingFlags, FrameGroup, EquipmentAppearance, HairDefinition, BeardDefinition, ItemSeatDefinition } from './types';
 import { encodeItemSlotType } from './item-slot-types';
 import { encodeItemIdentity } from './item-identity-codec';
-
-const EOBJ_FORMAT_VERSION = 17;
 
 const ATTR = {
   ThingAttrGround: 0,
@@ -306,6 +305,12 @@ export function compileObjectData(
     w.writeUInt16(visual.visualEquipmentId);
     w.writeUInt16(visual.equipmentAppearanceId);
     w.writeString(visual.name);
+    const attachment = visual.attachment;
+    w.writeUInt8(attachment ? ATTACHMENT_POINTS.indexOf(attachment.point) + 1 : 0);
+    if (attachment) {
+      validateAttachmentDefinition(attachment);
+      for (const rank of attachment.ranks) w.writeUInt8(rank);
+    }
   }
 
   const hairs = Array.from(hairDefinitions.values()).sort((a, b) => a.hairId - b.hairId);

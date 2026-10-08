@@ -10,6 +10,7 @@
     "validate:material-mask": "tsx scripts/validate-material-mask.ts",
     "validate:color-mask-migration": "tsx scripts/validate-color-mask-migration.ts",
     "validate:primary-secondary": "node scripts/validate-primary-secondary-model.cjs",
+    "validate:attachments": "node scripts/validate-attachments.cjs",
     "validate:compact-outfit": "node scripts/validate-compact-outfit.cjs",
     "validate:beard": "node scripts/validate-beard-catalog.cjs",
     "validate:beard-sheet": "node scripts/validate-beard-sheet-import.cjs",
