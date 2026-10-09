@@ -1315,6 +1315,7 @@ export function SpritePreview() {
         setPlaying={setPlaying}
         currentFrame={currentFrame}
         setCurrentFrame={setCurrentFrame}
+        activeZ={activeZ}
         canvasRef={canvasRef}
         handleImageFiles={handleImageFiles}
         copyMenuOpen={copyMenuOpen}

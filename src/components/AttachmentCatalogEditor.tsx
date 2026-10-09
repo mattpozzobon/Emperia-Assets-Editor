@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useOBStore } from '../store';
-import { ATTACHMENT_POINTS, POTION_ATTACHMENT_COLORS, type AttachmentPoint } from '../lib/attachments.generated';
+import { ATTACHMENT_POINTS, type AttachmentPoint } from '../lib/attachments.generated';
 import type { AttachmentCatalogEntry } from '../lib/types';
 import { OutfitThumbnail } from './EquipmentCatalogEditor';
 
@@ -17,7 +17,7 @@ export function AttachmentCatalogEditor() {
   const remove = useOBStore(state => state.removeAttachmentCatalogEntry);
   const [filter, setFilter] = useState('all');
   const [direction, setDirection] = useState(2);
-  const [previewColor, setPreviewColor] = useState<keyof typeof POTION_ATTACHMENT_COLORS>('health');
+  const [previewColor, setPreviewColor] = useState('#ffffff');
   const [error, setError] = useState('');
   if (!data) return null;
   const entries = [...(data.attachmentCatalog?.values() ?? [])].filter(entry => entry.attachment
@@ -40,22 +40,20 @@ export function AttachmentCatalogEditor() {
       <select aria-label="Preview direction" className={inputClass} value={direction} onChange={event => setDirection(Number(event.target.value))}>
         {['North', 'East', 'South', 'West'].map((label, index) => <option key={label} value={index}>{label}</option>)}
       </select>
-      <select aria-label="Potion preview colour" className={inputClass} value={previewColor} onChange={event => setPreviewColor(event.target.value as typeof previewColor)}>
-        <option value="health">Health · Red</option><option value="mana">Mana · Blue</option><option value="stamina">Stamina · Green</option>
-      </select>
+      <input type="color" aria-label="Attachment preview colour" className={inputClass} value={previewColor} onChange={event => setPreviewColor(event.target.value)} />
       <button className={inputClass} onClick={add}>Add attachment point</button>
     </div>
     {error && <p role="alert" className="text-xs text-red-400">{error}</p>}
     {entries.length === 0 && <p className="text-xs text-emperia-muted">No attachments in this category.</p>}
     {entries.map(entry => <div key={entry.attachmentId} className="space-y-3 rounded border border-emperia-border p-3">
       <div className="flex flex-wrap items-center gap-3">
-        <OutfitThumbnail equipmentAppearanceId={0} attachmentId={entry.attachmentId} size={48} direction={direction} primaryColor={POTION_ATTACHMENT_COLORS[previewColor]} />
+        <OutfitThumbnail equipmentAppearanceId={0} attachmentId={entry.attachmentId} size={48} direction={direction} primaryColor={parseInt(previewColor.slice(1), 16)} />
         <div><strong className="text-xs">{pointLabel(entry.attachment.point)}</strong><p className="text-[10px] text-emperia-muted">Attachment #{entry.attachmentId}</p></div>
         <select aria-label={`Attachment ${entry.attachmentId} position`} className={inputClass} value={entry.attachment.point} onChange={event => save({ ...entry, attachment: { ...entry.attachment, point: event.target.value as AttachmentPoint } })}>
           {ATTACHMENT_POINTS.map(point => <option key={point} value={point}>{pointLabel(point)}</option>)}
         </select>
         <input aria-label={`Attachment ${entry.attachmentId} name`} className={inputClass} value={entry.name} onChange={event => save({ ...entry, name: event.target.value })} />
-        {entry.attachmentId > 3 && entry.attachmentId === data.attachmentCount && <button className={inputClass} onClick={() => remove(entry.attachmentId)}>Remove</button>}
+        {entry.attachmentId === data.attachmentCount && <button className={inputClass} onClick={() => remove(entry.attachmentId)}>Remove</button>}
       </div>
       <div className="flex flex-wrap items-center gap-2 text-[10px] text-emperia-muted">
         <span>Draw order:</span>{['North', 'East', 'South', 'West'].map((label, index) => <label key={label}>{label} <input aria-label={`${entry.attachment!.point} draw order ${label}`} className={`${inputClass} w-14`} type="number" min={0} max={15} value={entry.attachment!.ranks[index]} onChange={event => {

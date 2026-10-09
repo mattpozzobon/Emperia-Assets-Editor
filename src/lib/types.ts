@@ -134,8 +134,6 @@ export interface AttachmentCatalogEntry {
   attachmentId: number;
   name: string;
   attachment: import('./attachments.generated').AttachmentDefinition;
-  /** Original Equipment slot, retained as an empty record to preserve public indices. */
-  legacySourceEquipmentId?: number;
 }
 export type SeatDirection = 'north' | 'east' | 'south' | 'west';
 export type PoseAction = 'sit' | 'sit-ground' | 'attack';

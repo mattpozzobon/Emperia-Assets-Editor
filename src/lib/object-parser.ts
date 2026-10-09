@@ -1,5 +1,4 @@
 import { ATTACHMENT_POINTS, validateAttachmentDefinition } from './attachments.generated';
-import { migrateAttachmentLibrary } from './attachment-library';
 /**
  * Parses .eobj / .dat files into ObjectData.
  * Ported from Emperia-Client object-buffer.ts — standalone, no game deps.
@@ -424,8 +423,6 @@ export function parseObjectData(buffer: ArrayBuffer): ObjectData {
             entry.attachment = { point: ATTACHMENT_POINTS[pointCode - 1], ranks: [packet.readUInt8(), packet.readUInt8(), packet.readUInt8(), packet.readUInt8()] };
             validateAttachmentDefinition(entry.attachment);
           }
-        } else {
-          if (visualEquipmentId >= 800 && visualEquipmentId <= 802) entry.name = `Belt potion position ${visualEquipmentId - 799}`;
         }
         visualEquipmentAppearances.set(visualEquipmentId, entry);
       }
@@ -557,13 +554,12 @@ export function parseObjectData(buffer: ArrayBuffer): ObjectData {
   const attachmentCatalog = new Map<number, import('./types').AttachmentCatalogEntry>();
   for (let attachmentId = 1; attachmentId <= attachmentCount; attachmentId++) {
     const name = packet.readString();
-    const legacySource = packet.readUInt16();
+    packet.readUInt16(); // Reserved metadata word.
     const pointCode = packet.readUInt8();
     if (pointCode < 1 || pointCode > ATTACHMENT_POINTS.length) throw new Error('Invalid attachment point');
     const attachment = { point: ATTACHMENT_POINTS[pointCode - 1], ranks: [packet.readUInt8(), packet.readUInt8(), packet.readUInt8(), packet.readUInt8()] as [number, number, number, number] };
     validateAttachmentDefinition(attachment);
     attachmentCatalog.set(attachmentId, { attachmentId, name, attachment,
-      ...(legacySource !== 0xFFFF ? { legacySourceEquipmentId: legacySource } : {}),
     });
   }
   const totalCount = itemCount + outfitCount + equipmentCount + hairCount + effectCount + distanceCount + beardCount + attachmentCount;
@@ -641,8 +637,8 @@ export function parseObjectData(buffer: ArrayBuffer): ObjectData {
     originalBuffer: buffer,
   };
 
-  if (formatVersion >= 6) return migrateAttachmentLibrary(parsed);
-  if (formatVersion === 5) return migrateAttachmentLibrary(migrateVisualEquipment(parsed));
+  if (formatVersion >= 6) return parsed;
+  if (formatVersion === 5) return migrateVisualEquipment(parsed);
 
   // EOBJ v4 stored equipment and hair visuals inside the outfit section.
   // Convert that layout in memory so every subsequent compile emits v5.

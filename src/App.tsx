@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { useOBStore, getDisplayId } from './store';
-import { migrateAttachmentLibrary } from './lib/attachment-library';
 import { FileDropZone } from './components/FileDropZone';
 import { Header } from './components/Header';
 import { CategoryTabs } from './components/CategoryTabs';
@@ -86,25 +85,6 @@ export default function App() {
   const centerTab = useOBStore((s) => s.centerTab);
   const activeLibrary = useOBStore((s) => s.activeLibrary);
   const setCenterTab = useOBStore((s) => s.setCenterTab);
-  const migrationData = useOBStore((s) => s.objectData);
-  useEffect(() => {
-    if (!migrationData) return;
-    const migrated = migrateAttachmentLibrary(migrationData);
-    if (migrated === migrationData) return;
-    const current = useOBStore.getState();
-    if (current.objectData !== migrationData) return;
-    const sourceStart = migrationData.itemCount + migrationData.outfitCount + 75;
-    const remapId = (id: number) => migrated.equipmentCount > migrationData.equipmentCount && id >= sourceStart
-      ? id + 3 : id;
-    const selectedThingId = current.selectedThingId == null ? null : remapId(current.selectedThingId);
-    const selectedCategory = selectedThingId == null ? undefined : migrated.things.get(selectedThingId)?.category;
-    useOBStore.setState({
-      objectData: migrated, dirty: true, editVersion: current.editVersion + 1,
-      dirtyIds: new Set(Array.from(current.dirtyIds, remapId)),
-      selectedThingId, selectedThingIds: new Set(Array.from(current.selectedThingIds, remapId)),
-      ...(selectedCategory === 'attachments' ? { activeCategory: 'attachments', activeLibrary: 'attachments' } : {}),
-    });
-  }, [migrationData]);
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => (
     getSavedPanelWidth('emperia-ob-left-panel-width', 256, 200, 520)
   ));

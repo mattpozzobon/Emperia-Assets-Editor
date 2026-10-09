@@ -14,17 +14,21 @@ interface FullDirectionalSheetImportOptions {
   movingFrames: number;
   layers: number;
   spriteSize: 32 | 64;
-  /** Source column for each target layer and direction: [layer][North, East, South, West]. */
-  sourceColumnsByLayer: readonly (readonly number[])[];
-  /** Source row for each target Idle frame. */
-  idleSourceRows: readonly number[];
-  /** Source row for each target Moving frame. */
-  movingSourceRows: readonly number[];
+  /** Source column for each direction: [North, East, South, West], shared by all layers. */
+  sourceColumns: readonly number[];
+  /** Source row for each target Idle frame: [layer][frame]. */
+  idleSourceRowsByLayer: readonly (readonly number[])[];
+  /** Source row for each target Moving frame: [layer][frame]. */
+  movingSourceRowsByLayer: readonly (readonly number[])[];
 }
 
 const DIRECTION_COLUMNS = 4;
 const MAX_FRAME_COUNT = 255;
-const SUPPORTED_CATEGORIES = new Set(['equipment', 'hair', 'beard', 'outfit']);
+const SUPPORTED_CATEGORIES = new Set(['equipment', 'hair', 'beard', 'attachments', 'outfit']);
+
+export const supportsFullSheetImport = (category?: string): boolean => (
+  category != null && SUPPORTED_CATEGORIES.has(category)
+);
 
 /** A single-layer beard sheet tints every visible pixel with the hair's primary colour. */
 export function buildBeardColorMaskPixels(source: Uint8ClampedArray): Uint8ClampedArray {
@@ -72,13 +76,13 @@ export async function importFullDirectionalSheet({
   movingFrames,
   layers,
   spriteSize,
-  sourceColumnsByLayer,
-  idleSourceRows,
-  movingSourceRows,
+  sourceColumns,
+  idleSourceRowsByLayer,
+  movingSourceRowsByLayer,
 }: FullDirectionalSheetImportOptions): Promise<FullDirectionalSheetImportResult> {
   const image = await loadImage(file);
-  if (!SUPPORTED_CATEGORIES.has(thing.category)) {
-    throw new Error('Select an Equipment, Hair, Beard, or Outfit object before importing a directional sheet.');
+  if (!supportsFullSheetImport(thing.category)) {
+    throw new Error('Select an Equipment, Hair, Beard, Attachment, or Outfit object before importing a directional sheet.');
   }
   if (
     !Number.isInteger(idleFrames)
@@ -126,20 +130,17 @@ export async function importFullDirectionalSheet({
       throw new Error(`${label} mapping is incomplete or contains a duplicate source.`);
     }
   };
-  if (sourceColumnsByLayer.length !== layers) {
-    throw new Error('Layer column mapping is incomplete.');
+  validateMapping('Direction column', sourceColumns, DIRECTION_COLUMNS, sourceColumnCount);
+  if (idleSourceRowsByLayer.length !== layers || movingSourceRowsByLayer.length !== layers) {
+    throw new Error('Layer row mapping is incomplete.');
   }
   for (let layer = 0; layer < layers; layer++) {
-    validateMapping(`Layer ${layer + 1} direction`, sourceColumnsByLayer[layer], DIRECTION_COLUMNS, sourceColumnCount);
+    validateMapping(`Layer ${layer + 1} Idle row`, idleSourceRowsByLayer[layer], idleFrames, sourceRowCount);
+    validateMapping(`Layer ${layer + 1} Moving row`, movingSourceRowsByLayer[layer], movingFrames, sourceRowCount);
   }
-  const mappedSourceColumns = sourceColumnsByLayer.flatMap((columns) => [...columns]);
-  if (new Set(mappedSourceColumns).size !== layers * DIRECTION_COLUMNS) {
-    throw new Error('Each source column can only be assigned to one direction and layer.');
-  }
-  validateMapping('Idle row', idleSourceRows, idleFrames, sourceRowCount);
-  validateMapping('Moving row', movingSourceRows, movingFrames, sourceRowCount);
-  if (new Set([...idleSourceRows, ...movingSourceRows]).size !== idleFrames + movingFrames) {
-    throw new Error('Each source row can only be assigned to one Idle or Moving frame.');
+  const mappedRows = [...idleSourceRowsByLayer.flat(), ...movingSourceRowsByLayer.flat()];
+  if (new Set(mappedRows).size !== layers * (idleFrames + movingFrames)) {
+    throw new Error('Each source row can only be assigned to one frame and layer.');
   }
 
   // Directional sheets use square 32px tiles. Normalize the object to either
@@ -271,8 +272,8 @@ export async function importFullDirectionalSheet({
           frame,
           direction,
           layer,
-          sourceColumnsByLayer[layer][direction],
-          idleSourceRows[frame],
+          sourceColumns[direction],
+          idleSourceRowsByLayer[layer][frame],
         );
       }
       for (let frame = 0; frame < movingFrames; frame++) {
@@ -281,8 +282,8 @@ export async function importFullDirectionalSheet({
           frame,
           direction,
           layer,
-          sourceColumnsByLayer[layer][direction],
-          movingSourceRows[frame],
+          sourceColumns[direction],
+          movingSourceRowsByLayer[layer][frame],
         );
       }
     }

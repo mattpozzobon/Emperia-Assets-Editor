@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { Search, Plus, Trash2, X, Minimize2, Grid2x2, RefreshCw, Images } from 'lucide-react';
 import { useOBStore } from '../store';
 import { clearSpriteCache } from '../lib/sprite-decoder';
-import { importFullDirectionalSheet } from '../lib/full-directional-sheet-import';
+import { importFullDirectionalSheet, supportsFullSheetImport } from '../lib/full-directional-sheet-import';
 import { AtlasCell } from './AtlasCell';
 import { SpriteGroupTray } from './SpriteGroupTray';
 import { useSpriteTooltip } from './SpriteTooltip';
@@ -24,38 +24,33 @@ const DIRECTION_LABELS = ['North', 'East', 'South', 'West'] as const;
 
 type SheetColumnAssignment = {
   direction: number;
-  layer: number;
 } | null;
 
 type SheetRowAssignment = {
   kind: 'idle' | 'moving';
   frame: number;
+  layer: number;
 } | null;
 
-const defaultColumnAssignments = (
-  columnCount: number,
-  layers: number,
-): SheetColumnAssignment[] => Array.from({ length: columnCount }, (_, column) => {
-  const direction = Math.floor(column / layers);
-  if (direction >= DIRECTION_LABELS.length) return null;
-  return { direction, layer: column % layers };
-});
+const defaultColumnAssignments = (columnCount: number): SheetColumnAssignment[] =>
+  Array.from({ length: columnCount }, (_, direction) => (
+    direction < DIRECTION_LABELS.length ? { direction } : null
+  ));
 
 const defaultRowAssignments = (
   rowCount: number,
   idleFrames: number,
   movingFrames: number,
+  layers: number,
 ): SheetRowAssignment[] => Array.from({ length: rowCount }, (_, row) => {
-  if (row < idleFrames) return { kind: 'idle', frame: row };
-  if (row < idleFrames + movingFrames) {
-    return { kind: 'moving', frame: row - idleFrames };
+  const frame = Math.floor(row / layers);
+  const layer = row % layers;
+  if (frame < idleFrames) return { kind: 'idle', frame, layer };
+  if (frame < idleFrames + movingFrames) {
+    return { kind: 'moving', frame: frame - idleFrames, layer };
   }
   return null;
 });
-
-const supportsFullSheetImport = (category?: string) => (
-  category === 'equipment' || category === 'hair' || category === 'beard' || category === 'attachments' || category === 'outfit'
-);
 
 const categoryLabel = (category?: string) => {
   if (category === 'hair') return 'Hair';
@@ -90,15 +85,15 @@ export function ThingSpriteGrid() {
   const [fullSheetSpriteSize, setFullSheetSpriteSize] = useState<32 | 64>(64);
   const [fullSheetPreview, setFullSheetPreview] = useState<FullSheetPreview | null>(null);
   const [fullSheetColumnAssignments, setFullSheetColumnAssignments] = useState<SheetColumnAssignment[]>([
-    { direction: 0, layer: 0 },
-    { direction: 1, layer: 0 },
-    { direction: 2, layer: 0 },
-    { direction: 3, layer: 0 },
+    { direction: 0 },
+    { direction: 1 },
+    { direction: 2 },
+    { direction: 3 },
   ]);
   const [fullSheetRowAssignments, setFullSheetRowAssignments] = useState<SheetRowAssignment[]>([
-    { kind: 'idle', frame: 0 },
-    { kind: 'moving', frame: 0 },
-    { kind: 'moving', frame: 1 },
+    { kind: 'idle', frame: 0, layer: 0 },
+    { kind: 'moving', frame: 0, layer: 0 },
+    { kind: 'moving', frame: 1, layer: 0 },
   ]);
 
   const selectedSlots = useOBStore((s) => s.selectedSlots);
@@ -134,35 +129,35 @@ export function ThingSpriteGrid() {
   }, [fullSheetPreview?.url]);
 
   useEffect(() => {
-    setFullSheetColumnAssignments(defaultColumnAssignments(fullSheetSourceColumnCount, fullSheetLayers));
-  }, [fullSheetSourceColumnCount, fullSheetLayers]);
+    setFullSheetColumnAssignments(defaultColumnAssignments(fullSheetSourceColumnCount));
+  }, [fullSheetSourceColumnCount]);
 
   useEffect(() => {
     setFullSheetRowAssignments(defaultRowAssignments(
       fullSheetSourceRowCount,
       fullSheetIdleFrames,
       fullSheetMovingFrames,
+      fullSheetLayers,
     ));
-  }, [fullSheetSourceRowCount, fullSheetIdleFrames, fullSheetMovingFrames]);
+  }, [fullSheetSourceRowCount, fullSheetIdleFrames, fullSheetMovingFrames, fullSheetLayers]);
 
-  const sourceColumnsByLayer = useMemo(() => Array.from(
-    { length: fullSheetLayers },
-    (_, layer) => DIRECTION_LABELS.map((_, direction) => fullSheetColumnAssignments.findIndex(
-      (assignment) => assignment?.direction === direction && assignment.layer === layer,
-    )),
-  ), [fullSheetColumnAssignments, fullSheetLayers]);
-  const idleSourceRows = useMemo(() => Array.from(
-    { length: fullSheetIdleFrames },
-    (_, frame) => fullSheetRowAssignments.findIndex((assignment) => (
-      assignment?.kind === 'idle' && assignment.frame === frame
-    )),
-  ), [fullSheetIdleFrames, fullSheetRowAssignments]);
-  const movingSourceRows = useMemo(() => Array.from(
-    { length: fullSheetMovingFrames },
-    (_, frame) => fullSheetRowAssignments.findIndex((assignment) => (
-      assignment?.kind === 'moving' && assignment.frame === frame
-    )),
-  ), [fullSheetMovingFrames, fullSheetRowAssignments]);
+  const sourceColumns = useMemo(() => DIRECTION_LABELS.map((_, direction) => (
+    fullSheetColumnAssignments.findIndex((assignment) => assignment?.direction === direction)
+  )), [fullSheetColumnAssignments]);
+  const idleSourceRowsByLayer = useMemo(() => Array.from(
+    { length: fullSheetLayers }, (_, layer) => Array.from(
+      { length: fullSheetIdleFrames }, (_, frame) => fullSheetRowAssignments.findIndex(
+        (assignment) => assignment?.kind === 'idle' && assignment.frame === frame && assignment.layer === layer,
+      ),
+    ),
+  ), [fullSheetLayers, fullSheetIdleFrames, fullSheetRowAssignments]);
+  const movingSourceRowsByLayer = useMemo(() => Array.from(
+    { length: fullSheetLayers }, (_, layer) => Array.from(
+      { length: fullSheetMovingFrames }, (_, frame) => fullSheetRowAssignments.findIndex(
+        (assignment) => assignment?.kind === 'moving' && assignment.frame === frame && assignment.layer === layer,
+      ),
+    ),
+  ), [fullSheetLayers, fullSheetMovingFrames, fullSheetRowAssignments]);
 
   const handleFullSheetSelection = useCallback((files: FileList | null) => {
     const file = files?.[0];
@@ -170,9 +165,9 @@ export function ThingSpriteGrid() {
     const url = URL.createObjectURL(file);
     const image = new Image();
     image.onload = () => {
-      const rowCount = fullSheetIdleFrames + fullSheetMovingFrames;
+      const rowCount = (fullSheetIdleFrames + fullSheetMovingFrames) * fullSheetLayers;
       const detectedSize = ([32, 64] as const).find((size) => (
-        image.naturalWidth === size * 4 * fullSheetLayers && image.naturalHeight === size * rowCount
+        image.naturalWidth === size * 4 && image.naturalHeight === size * rowCount
       ));
       if (detectedSize) setFullSheetSpriteSize(detectedSize);
       setFullSheetPreview({
@@ -193,7 +188,7 @@ export function ThingSpriteGrid() {
   const handleFullSheetImport = useCallback(async (file: File | null) => {
     if (!file) return;
     if (!thing || !spriteData || !supportsFullSheetImport(thing.category)) {
-      alert('Select an Equipment, Hair, Beard, or Outfit object before importing a directional sheet.');
+      alert('Select an Equipment, Hair, Beard, Attachment, or Outfit object before importing a directional sheet.');
       return;
     }
 
@@ -207,9 +202,9 @@ export function ThingSpriteGrid() {
         movingFrames: fullSheetMovingFrames,
         layers: fullSheetLayers,
         spriteSize: fullSheetSpriteSize,
-        sourceColumnsByLayer,
-        idleSourceRows,
-        movingSourceRows,
+        sourceColumns,
+        idleSourceRowsByLayer,
+        movingSourceRowsByLayer,
       });
       clearSpriteCache();
       const latest = useOBStore.getState();
@@ -241,9 +236,9 @@ export function ThingSpriteGrid() {
     fullSheetMovingFrames,
     fullSheetLayers,
     fullSheetSpriteSize,
-    sourceColumnsByLayer,
-    idleSourceRows,
-    movingSourceRows,
+    sourceColumns,
+    idleSourceRowsByLayer,
+    movingSourceRowsByLayer,
   ]);
 
   // Import PNG(s) as new atlas sprites (always sliced into 32×32 tiles).
@@ -599,31 +594,30 @@ export function ThingSpriteGrid() {
     e.dataTransfer.effectAllowed = 'copy';
   }, []);
 
-  const fullSheetRowCount = fullSheetIdleFrames + fullSheetMovingFrames;
-  const expectedFullSheetWidth = fullSheetSpriteSize * 4 * fullSheetLayers;
+  const fullSheetRowCount = (fullSheetIdleFrames + fullSheetMovingFrames) * fullSheetLayers;
+  const expectedFullSheetWidth = fullSheetSpriteSize * 4;
   const expectedFullSheetHeight = fullSheetRowCount * fullSheetSpriteSize;
   const fullSheetMappingValid = Boolean(
     fullSheetPreview
-    && fullSheetSourceColumnCount >= 4 * fullSheetLayers
+    && fullSheetSourceColumnCount >= 4
     && fullSheetSourceRowCount >= fullSheetRowCount
-    && sourceColumnsByLayer.every((columns) => columns.every((column) => column >= 0))
-    && idleSourceRows.every((row) => row >= 0)
-    && movingSourceRows.every((row) => row >= 0),
+    && sourceColumns.every((column) => column >= 0)
+    && idleSourceRowsByLayer.every((rows) => rows.every((row) => row >= 0))
+    && movingSourceRowsByLayer.every((rows) => rows.every((row) => row >= 0)),
   );
 
   const assignSourceColumn = (sourceColumn: number, value: string) => {
     const assignment: SheetColumnAssignment = value === ''
       ? null
       : (() => {
-          const [directionText, layerText] = value.split(':');
-          return { direction: Number(directionText), layer: Number(layerText) };
+          return { direction: Number(value) };
         })();
     setFullSheetColumnAssignments((previous) => {
       const next = [...previous];
       if (assignment) {
         for (let column = 0; column < next.length; column++) {
           const current = next[column];
-          if (current?.direction === assignment.direction && current.layer === assignment.layer) {
+          if (current?.direction === assignment.direction) {
             next[column] = null;
           }
         }
@@ -637,15 +631,15 @@ export function ThingSpriteGrid() {
     const assignment: SheetRowAssignment = value === ''
       ? null
       : (() => {
-          const [kind, frameText] = value.split(':');
-          return { kind: kind as 'idle' | 'moving', frame: Number(frameText) };
+          const [kind, frameText, layerText] = value.split(':');
+          return { kind: kind as 'idle' | 'moving', frame: Number(frameText), layer: Number(layerText) };
         })();
     setFullSheetRowAssignments((previous) => {
       const next = [...previous];
       if (assignment) {
         for (let row = 0; row < next.length; row++) {
           const current = next[row];
-          if (current?.kind === assignment.kind && current.frame === assignment.frame) {
+          if (current?.kind === assignment.kind && current.frame === assignment.frame && current.layer === assignment.layer) {
             next[row] = null;
           }
         }
@@ -1009,7 +1003,7 @@ export function ThingSpriteGrid() {
                 Confirm {categoryLabel(thing?.category)} sheet mapping
               </h3>
               <p className="mt-0.5 text-[10px] text-emperia-muted">
-                Check where every direction, layer, and animation row will be imported from.
+                Columns select directions. Rows select animation frames and layers.
               </p>
             </div>
             <button
@@ -1104,7 +1098,7 @@ export function ThingSpriteGrid() {
                   <div />
                   {Array.from({ length: fullSheetSourceColumnCount }, (_, column) => {
                     const assignment = fullSheetColumnAssignments[column];
-                    const value = assignment ? `${assignment.direction}:${assignment.layer}` : '';
+                    const value = assignment ? String(assignment.direction) : '';
                     return (
                       <label key={column} className="px-1 py-1 text-center text-[9px] text-emperia-muted">
                         Column {column + 1}
@@ -1114,12 +1108,8 @@ export function ThingSpriteGrid() {
                           className="mt-1 w-full rounded border border-emperia-border bg-emperia-surface px-1 py-1 text-[10px] font-semibold text-emperia-text outline-none focus:border-emperia-accent"
                         >
                           <option value="">Ignore</option>
-                          {DIRECTION_LABELS.flatMap((direction, directionIndex) => (
-                            Array.from({ length: fullSheetLayers }, (_, layer) => (
-                              <option key={`${direction}-${layer}`} value={`${directionIndex}:${layer}`}>
-                                {fullSheetLayers === 1 ? direction : `${direction} · L${layer + 1}`}
-                              </option>
-                            ))
+                          {DIRECTION_LABELS.map((direction, directionIndex) => (
+                            <option key={direction} value={directionIndex}>{direction}</option>
                           ))}
                         </select>
                       </label>
@@ -1129,11 +1119,11 @@ export function ThingSpriteGrid() {
                 <div className="flex items-stretch">
                   <div
                     className="grid w-24 shrink-0"
-                    style={{ gridTemplateRows: `repeat(${fullSheetSourceRowCount}, minmax(44px, 1fr))` }}
+                    style={{ gridTemplateRows: `repeat(${fullSheetSourceRowCount}, minmax(64px, 1fr))` }}
                   >
                     {Array.from({ length: fullSheetSourceRowCount }, (_, row) => {
                       const assignment = fullSheetRowAssignments[row];
-                      const value = assignment ? `${assignment.kind}:${assignment.frame}` : '';
+                      const value = assignment ? `${assignment.kind}:${assignment.frame}:${assignment.layer}` : '';
                       return (
                         <label
                           key={row}
@@ -1153,12 +1143,25 @@ export function ThingSpriteGrid() {
                           >
                             <option value="">Ignore</option>
                             {Array.from({ length: fullSheetIdleFrames }, (_, frame) => (
-                              <option key={`idle-${frame}`} value={`idle:${frame}`}>Idle {frame + 1}</option>
+                              <option key={`idle-${frame}`} value={`idle:${frame}:${assignment?.layer ?? 0}`}>Idle {frame + 1}</option>
                             ))}
                             {Array.from({ length: fullSheetMovingFrames }, (_, frame) => (
-                              <option key={`moving-${frame}`} value={`moving:${frame}`}>Moving {frame + 1}</option>
+                              <option key={`moving-${frame}`} value={`moving:${frame}:${assignment?.layer ?? 0}`}>Moving {frame + 1}</option>
                             ))}
                           </select>
+                          {fullSheetLayers > 1 && (
+                            <select
+                              aria-label={`Layer for row ${row + 1}`}
+                              value={assignment?.layer ?? 0}
+                              disabled={!assignment}
+                              onChange={(event) => assignment && assignSourceRow(row, `${assignment.kind}:${assignment.frame}:${event.target.value}`)}
+                              className="mt-1 rounded border border-emperia-border bg-emperia-surface px-1 py-1 text-[9px] text-emperia-text outline-none focus:border-emperia-accent disabled:opacity-40"
+                            >
+                              {Array.from({ length: fullSheetLayers }, (_, layer) => (
+                                <option key={layer} value={layer}>Layer {layer + 1}</option>
+                              ))}
+                            </select>
+                          )}
                         </label>
                       );
                     })}
@@ -1188,10 +1191,10 @@ export function ThingSpriteGrid() {
                         const columnAssignment = fullSheetColumnAssignments[column];
                         const active = assignment != null && columnAssignment != null;
                         const rowLabel = assignment
-                          ? `${assignment.kind === 'idle' ? 'Idle' : 'Moving'} ${assignment.frame + 1}`
+                          ? `${assignment.kind === 'idle' ? 'Idle' : 'Moving'} ${assignment.frame + 1}, Layer ${assignment.layer + 1}`
                           : 'Ignored row';
                         const columnLabel = columnAssignment
-                          ? `${DIRECTION_LABELS[columnAssignment.direction]}, Layer ${columnAssignment.layer + 1}`
+                          ? DIRECTION_LABELS[columnAssignment.direction]
                           : 'ignored column';
                         return (
                           <div

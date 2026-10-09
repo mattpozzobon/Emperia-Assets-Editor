@@ -3,7 +3,7 @@ import { Play, Pause, ChevronLeft, ChevronRight, Grid3X3, Grid2X2, ImageDown, Im
 import { useOBStore, getDisplayId } from '../store';
 import { clearSpriteCache } from '../lib/sprite-decoder';
 import { encodeOBD, decodeOBD } from '../lib/obd';
-import { exportSelectedSpriteSheets } from '../lib/export-sprites';
+import { exportFrameLayers, exportSelectedSpriteSheets } from '../lib/export-sprites';
 import type { ThingType, FrameGroup, ObjectData, SpriteData } from '../lib/types';
 import type { OutfitColorIndices } from '../lib/outfit-colors';
 
@@ -25,6 +25,7 @@ interface PreviewToolbarProps {
   playing: boolean;
   setPlaying: (p: boolean) => void;
   currentFrame: number;
+  activeZ: number;
   setCurrentFrame: (f: number) => void;
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   handleImageFiles: (files: FileList, dropX?: number, dropY?: number) => void;
@@ -41,7 +42,7 @@ export function PreviewToolbar({
   thing, group, objectData, spriteData, spriteOverrides, category,
   showGrid, setShowGrid, showCropSize, setShowCropSize,
   showDisplacementGuide, setShowDisplacementGuide,
-  previewMode, setPreviewMode, playing, setPlaying, currentFrame, setCurrentFrame,
+  previewMode, setPreviewMode, playing, setPlaying, currentFrame, activeZ, setCurrentFrame,
   canvasRef, handleImageFiles, copyMenuOpen, setCopyMenuOpen, copyMenuRef,
   baseOutfitId, setBaseOutfitId,
   showEffectOutfitReference, setShowEffectOutfitReference,
@@ -50,10 +51,22 @@ export function PreviewToolbar({
   const obdImportRef = useRef<HTMLInputElement>(null);
   const fileMenuRef = useRef<HTMLDetailsElement>(null);
 
+  const [pendingExport, setPendingExport] = useState<'png' | 'sheet' | null>(null);
+  const [exportLayer, setExportLayer] = useState<number | null>(null);
+  const exportLayerCount = pendingExport === 'png' ? (group?.layers ?? 1) : Math.max(1, ...thing.frameGroups.map((frameGroup) => frameGroup.layers));
+
   const isAnimated = group ? group.animationLength > 1 : false;
   const closeFileMenu = () => fileMenuRef.current?.removeAttribute('open');
 
-  const handleExport = () => {
+  const handleExport = async (layer: number | null = null) => {
+    if (group && group.layers > 1 && spriteData) {
+      const state = useOBStore.getState();
+      await exportFrameLayers(thing, group, currentFrame, spriteData, spriteOverrides, layer,
+        previewMode ? [Math.min(state.activeDirection, group.patternX - 1)] : Array.from({ length: group.patternX }, (_, index) => index),
+        previewMode ? [Math.min(state.activePatternY, group.patternY - 1)] : Array.from({ length: group.patternY }, (_, index) => index),
+        Math.min(activeZ, group.patternZ - 1));
+      return;
+    }
     const canvas = canvasRef.current;
     if (!canvas) return;
     const url = canvas.toDataURL('image/png');
@@ -85,7 +98,7 @@ export function PreviewToolbar({
     }
   };
 
-  const handleExportSpriteSheet = async () => {
+  const handleExportSpriteSheet = async (layer: number | null = null) => {
     if (!objectData || !spriteData) return;
     const state = useOBStore.getState();
     try {
@@ -95,9 +108,30 @@ export function PreviewToolbar({
         spriteOverrides,
         itemDefinitions: state.itemDefinitions,
         appearanceToItemIds: state.appearanceToItemIds,
-      });
+      }, layer);
     } catch (error) {
       alert(`Sprite sheet export failed: ${error instanceof Error ? error.message : error}`);
+    }
+  };
+
+  const requestExport = (format: 'png' | 'sheet') => {
+    closeFileMenu();
+    const layerCount = format === 'png' ? (group?.layers ?? 1) : Math.max(1, ...thing.frameGroups.map((frameGroup) => frameGroup.layers));
+    if (layerCount > 1) {
+      setExportLayer(null);
+      setPendingExport(format);
+    } else {
+      void runExport(format, null);
+    }
+  };
+
+  const runExport = async (format: 'png' | 'sheet', layer: number | null) => {
+    try {
+      if (format === 'png') await handleExport(layer);
+      else await handleExportSpriteSheet(layer);
+      setPendingExport(null);
+    } catch (error) {
+      alert(`Export failed: ${error instanceof Error ? error.message : error}`);
     }
   };
 
@@ -208,13 +242,13 @@ export function PreviewToolbar({
           </button>
           <div className="my-1 border-t border-emperia-border" />
           <button
-            onClick={() => { closeFileMenu(); handleExport(); }}
+            onClick={() => requestExport('png')}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[10px] text-emperia-text hover:bg-emperia-hover"
           >
             <ImageDown className="h-3.5 w-3.5 text-emperia-muted" /> Export PNG
           </button>
           <button
-            onClick={() => { closeFileMenu(); void handleExportSpriteSheet(); }}
+            onClick={() => requestExport('sheet')}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[10px] text-emperia-text hover:bg-emperia-hover"
           >
             <Grid2X2 className="h-3.5 w-3.5 text-emperia-muted" /> Export Sprite Sheet
@@ -227,6 +261,27 @@ export function PreviewToolbar({
           </button>
         </div>
       </details>
+
+      {pendingExport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="Export layers">
+          <div className="w-72 rounded border border-emperia-border bg-emperia-surface p-4 shadow-xl">
+            <p className="mb-3 text-sm font-semibold text-emperia-text">Export {pendingExport === 'png' ? 'PNG' : 'Sprite Sheet'}</p>
+            <label className="block text-xs text-emperia-muted">
+              Layers
+              <select value={exportLayer ?? 'all'} onChange={(event) => setExportLayer(event.target.value === 'all' ? null : Number(event.target.value))}
+                className="mt-1 w-full rounded border border-emperia-border bg-emperia-bg p-2 text-xs text-emperia-text">
+                <option value="all">All layers</option>
+                {Array.from({ length: exportLayerCount }, (_, layer) => <option key={layer} value={layer}>Layer {layer + 1}</option>)}
+              </select>
+            </label>
+            <p className="mt-2 text-[10px] text-emperia-muted">All layers are placed on separate rows.</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setPendingExport(null)} className="rounded px-3 py-1.5 text-xs text-emperia-muted hover:bg-emperia-hover">Cancel</button>
+              <button onClick={() => void runExport(pendingExport, exportLayer)} className="rounded bg-emperia-accent px-3 py-1.5 text-xs text-white">Export</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex min-w-0 flex-wrap items-center justify-end gap-1">
         <div className="w-px h-4 bg-emperia-border mx-0.5" />

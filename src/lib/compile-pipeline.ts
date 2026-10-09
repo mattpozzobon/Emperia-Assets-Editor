@@ -681,7 +681,7 @@ export async function runCompile(
     }
     const attachmentMetadata = (data: typeof od) => Array.from(data.attachmentCatalog?.values() ?? [])
       .sort((a, b) => a.attachmentId - b.attachmentId)
-      .map(entry => [entry.attachmentId, entry.name, entry.legacySourceEquipmentId,
+      .map(entry => [entry.attachmentId, entry.name,
         entry.attachment.point, entry.attachment.ranks]);
     if ((reparsedObject.attachmentCount ?? 0) !== (od.attachmentCount ?? 0)
       || JSON.stringify(attachmentMetadata(reparsedObject)) !== JSON.stringify(attachmentMetadata(od))) {

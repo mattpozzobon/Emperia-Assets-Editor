@@ -1,11 +1,11 @@
 // Generated from Emperia-Server/src/shared/attachments.ts.
-import { type Appearance, colorAppearance, sameAppearance, appearanceKey } from './appearance.generated';
+import { type Appearance, sameAppearance, appearanceKey } from './appearance.generated';
 
-/** Preserve legacy point codes; additional positions use the remaining UInt8 codes. */
-const LEGACY_POINTS = ['belt1', 'belt2', 'belt3', 'beltPouch', 'backpackLeft', 'backpackRight', 'backpackBottom'] as const;
-export type AttachmentPoint = typeof LEGACY_POINTS[number] | `belt${number}` | `backpack${number}`;
+/** Stable wire positions. Codes are independent of attachment asset IDs. */
+const NAMED_POINTS = ['belt1', 'belt2', 'belt3', 'beltPouch', 'backpackLeft', 'backpackRight', 'backpackBottom'] as const;
+export type AttachmentPoint = typeof NAMED_POINTS[number] | `belt${number}` | `backpack${number}`;
 export const ATTACHMENT_POINTS: readonly AttachmentPoint[] = Object.freeze([
-  ...LEGACY_POINTS,
+  ...NAMED_POINTS,
   ...Array.from({ length: 124 }, (_, index) => `belt${index + 4}` as AttachmentPoint),
   ...Array.from({ length: 124 }, (_, index) => `backpack${index + 1}` as AttachmentPoint),
 ]);
@@ -23,12 +23,9 @@ export interface ItemAttachmentBinding {
   potionSlot?: number;
   appearance?: Appearance;
 }
-export const BELT_POTION_VISUAL_IDS = [1, 2, 3] as const;
-export const POTION_ATTACHMENT_COLORS = Object.freeze({ health: 0xFF0000, mana: 0x0000FF, stamina: 0x00FF00 });
+// Positional artwork for the four default potion slots.
+export const BELT_POTION_VISUAL_IDS = [1, 4, 3, 2] as const;
 export const DEFAULT_BELT_BINDINGS: readonly ItemAttachmentBinding[] = Object.freeze(BELT_POTION_VISUAL_IDS.map((attachmentId, index) => Object.freeze({ attachmentId, point: `belt${index + 1}` as AttachmentPoint, potionSlot: index })));
-export function defaultAttachmentDefinition(id: number): AttachmentDefinition | undefined {
-  return id >= 1 && id <= 3 ? { point: ATTACHMENT_POINTS[id - 1], ranks: [0, 0, 0, 0] } : undefined;
-}
 export function validateAttachmentDefinition(value: AttachmentDefinition): void {
   if (!attachmentPointCode(value.point) || value.ranks.length !== 4 || value.ranks.some(rank => !Number.isInteger(rank) || rank < 0 || rank > 15)) throw new Error('Invalid attachment point or directional draw ranks');
 }
@@ -51,27 +48,16 @@ export function hasAttachments(value: OutfitAttachments): boolean {
   for (const point in value) if (value[point as AttachmentPoint]) return true;
   return false;
 }
-export function normalizeAttachments(value: OutfitAttachments | Record<string, unknown> | undefined): OutfitAttachments {
+/** Copy canonical records without accepting flags or equipment IDs. */
+export function cloneAttachments(value?: OutfitAttachments): OutfitAttachments {
   const result: OutfitAttachments = {};
   if (!value) return result;
   for (const key of Object.keys(value)) {
     const point = key as AttachmentPoint;
-    if (!attachmentPointCode(point)) continue;
-    const attachment = (value as Record<string, unknown>)[point];
-    if (!attachment || typeof attachment !== 'object') continue;
-    if ('attachmentId' in attachment) {
-      const entry = attachment as Attachment;
-      result[point] = { ...entry, ...(entry.appearance ? { appearance: { ...entry.appearance } } : {}) };
-    } else if ('visualEquipmentId' in attachment) {
-      const old = attachment as { visualEquipmentId: number; appearance?: Appearance };
-      if (old.visualEquipmentId >= 800 && old.visualEquipmentId <= 802) result[point] = { attachmentId: old.visualEquipmentId - 799, ...(old.appearance ? { appearance: { ...old.appearance } } : {}) };
-    }
+    const entry = value[point];
+    if (!attachmentPointCode(point) || !entry || !Number.isInteger(entry.attachmentId) || entry.attachmentId < 1 || entry.attachmentId > 65535) throw new Error(`Invalid attachment at ${point}`);
+    result[point] = { attachmentId: entry.attachmentId, ...(entry.appearance ? { appearance: { ...entry.appearance } } : {}) };
   }
-  for (const [legacy, point, attachmentId, primary] of [
-    ['healthPotion', 'belt1', 1, POTION_ATTACHMENT_COLORS.health],
-    ['manaPotion', 'belt2', 2, POTION_ATTACHMENT_COLORS.mana],
-    ['energyPotion', 'belt3', 3, POTION_ATTACHMENT_COLORS.stamina],
-  ] as const) if ((value as Record<string, unknown>)[legacy] && !result[point]) result[point] = { attachmentId, appearance: colorAppearance(primary) };
   return result;
 }
 export function sameAttachment(a: Attachment | undefined | null, b: Attachment | undefined | null): boolean {

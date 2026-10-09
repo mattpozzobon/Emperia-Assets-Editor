@@ -1,4 +1,4 @@
-import { defaultAttachmentDefinition, validateAttachmentDefinition } from '../lib/attachments.generated';
+import { validateAttachmentDefinition } from '../lib/attachments.generated';
 import type { AttachmentCatalogEntry } from '../lib/types';
 /**
  * Equipment catalog actions. The EOBJ map is the only source of truth.
@@ -56,8 +56,6 @@ export function createEquipmentCatalogSlice(set: Set_, get: Get_) {
       if (!state.objectData || !entry.attachment) return;
       validateAttachmentDefinition(entry.attachment);
       if (!Number.isInteger(entry.attachmentId) || entry.attachmentId < 1 || entry.attachmentId > 65535) throw new Error('Invalid attachment ID');
-      const reserved = defaultAttachmentDefinition(entry.attachmentId);
-      if (reserved && reserved.point !== entry.attachment.point) throw new Error('Existing belt visual IDs keep their physical point');
       if (entry.attachmentId === (state.objectData.attachmentCount ?? 0) + 1) get().addThing('attachments');
       const current = get();
       if (entry.attachmentId > (current.objectData?.attachmentCount ?? 0)) throw new Error('Attachment is outside its library');
@@ -66,7 +64,6 @@ export function createEquipmentCatalogSlice(set: Set_, get: Get_) {
       set({ objectData: { ...current.objectData!, attachmentCatalog }, dirty: true, editVersion: current.editVersion + 1 });
     },
     removeAttachmentCatalogEntry: (attachmentId: number) => {
-      if (defaultAttachmentDefinition(attachmentId)) return;
       const state = get();
       if (!state.objectData?.attachmentCatalog?.has(attachmentId) || attachmentId !== state.objectData.attachmentCount) return;
       const range = state.getCategoryRange('attachments');

@@ -8,7 +8,6 @@ import { parseObjectData } from '../lib/object-parser';
 import { parseSpriteData, clearSpriteCache, clearSpriteCacheId } from '../lib/sprite-decoder';
 import { maybeDecompress } from '../lib/emperia-format';
 import { syncItemFlagsFromVisual, deriveGroup, deriveTopOrder, poseSetProfileKey } from '../lib/types';
-import { migrateAttachmentLibrary } from '../lib/attachment-library';
 import { ATTACHMENT_POINTS } from '../lib/attachments.generated';
 import type { OBState } from './store-types';
 import { shiftThingsDown, allocateThingId, remapSpriteIds } from './thing-helpers';
@@ -295,10 +294,6 @@ export const useOBStore = create<OBState>((set, get) => ({
   setActiveLibrary: (cat) => {
     const current = get();
     if (cat === 'attachments') {
-      if (current.objectData) {
-        const migrated = migrateAttachmentLibrary(current.objectData);
-        if (migrated !== current.objectData) set({ objectData: migrated, dirty: true, editVersion: current.editVersion + 1 });
-      }
       const range = current.getCategoryRange('attachments');
       set({
         activeCategory: 'attachments',

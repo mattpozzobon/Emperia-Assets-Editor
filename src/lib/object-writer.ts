@@ -390,7 +390,7 @@ export function compileObjectData(
     if (!entry) throw new Error(`Missing attachment catalog entry ${attachmentId}`);
     validateAttachmentDefinition(entry.attachment);
     w.writeString(entry.name);
-    w.writeUInt16(entry.legacySourceEquipmentId ?? 0xFFFF);
+    w.writeUInt16(0xFFFF); // Reserved metadata word.
     w.writeUInt8(ATTACHMENT_POINTS.indexOf(entry.attachment.point) + 1);
     for (const rank of entry.attachment.ranks) w.writeUInt8(rank);
   }

@@ -167,11 +167,12 @@ function getExportPrefix(id: number, thing: ThingType, ctx: ExportContext): stri
  * columns; frame groups, animation frames, Z/Y patterns, and layers are rows.
  * Keeping layers on separate rows preserves colour masks instead of flattening
  * them into the base image. This layout also matches the directional sheet
- * importer for the common 4-direction, one-layer case.
+ * importer for four-direction appearances with one or more layers.
  */
 export async function exportSelectedSpriteSheets(
   thingIds: number[],
   ctx: ExportContext,
+  selectedLayer: number | null = null,
 ): Promise<void> {
   if (thingIds.length === 0) return;
 
@@ -181,14 +182,14 @@ export async function exportSelectedSpriteSheets(
     const thing = ctx.objectData.things.get(id);
     if (!thing) continue;
 
-    const groups = thing.frameGroups.filter((group) => group.sprites.some((spriteId) => spriteId !== 0));
+    const groups = thing.frameGroups.filter((group) => group.sprites.some((spriteId) => spriteId !== 0) && (selectedLayer == null || selectedLayer < group.layers));
     if (groups.length === 0) continue;
 
     const cellTileWidth = Math.max(...groups.map((group) => group.width));
     const cellTileHeight = Math.max(...groups.map((group) => group.height));
     const columns = Math.max(...groups.map((group) => group.patternX));
     const rows = groups.reduce(
-      (total, group) => total + group.animationLength * group.patternZ * group.patternY * group.layers,
+      (total, group) => total + group.animationLength * group.patternZ * group.patternY * (selectedLayer == null ? group.layers : 1),
       0,
     );
 
@@ -203,7 +204,7 @@ export async function exportSelectedSpriteSheets(
       for (let frame = 0; frame < group.animationLength; frame++) {
         for (let patternZ = 0; patternZ < group.patternZ; patternZ++) {
           for (let patternY = 0; patternY < group.patternY; patternY++) {
-            for (let layer = 0; layer < group.layers; layer++) {
+            for (const layer of selectedLayer == null ? Array.from({ length: group.layers }, (_, index) => index) : [selectedLayer]) {
               for (let patternX = 0; patternX < group.patternX; patternX++) {
                 for (let visualY = 0; visualY < group.height; visualY++) {
                   for (let visualX = 0; visualX < group.width; visualX++) {
@@ -234,7 +235,7 @@ export async function exportSelectedSpriteSheets(
     }
 
     const png = await canvasToPng(sheet);
-    entries.push({ name: `${getExportPrefix(id, thing, ctx)}_sheet.png`, data: png });
+    entries.push({ name: `${getExportPrefix(id, thing, ctx)}${selectedLayer == null ? "" : `_layer${selectedLayer + 1}`}_sheet.png`, data: png });
   }
 
   if (entries.length === 0) return;
@@ -243,6 +244,49 @@ export async function exportSelectedSpriteSheets(
   } else {
     downloadBlob(buildZip(entries), 'sprite_sheets_export.zip', 'application/zip');
   }
+}
+
+/** Export the current frame with each requested layer on separate rows. */
+export async function exportFrameLayers(
+  thing: ThingType,
+  group: ThingType['frameGroups'][number],
+  frame: number,
+  spriteData: SpriteData,
+  spriteOverrides: Map<number, ImageData>,
+  selectedLayer: number | null,
+  patternXs: number[],
+  patternYs: number[],
+  patternZ: number,
+): Promise<void> {
+  const layers = selectedLayer == null
+    ? Array.from({ length: group.layers }, (_, layer) => layer)
+    : [selectedLayer];
+  const output = document.createElement('canvas');
+  output.width = patternXs.length * group.width * 32;
+  output.height = patternYs.length * layers.length * group.height * 32;
+  const context = output.getContext('2d');
+  if (!context) throw new Error('Canvas is unavailable for PNG export.');
+  for (const [row, py] of patternYs.entries()) {
+    for (const [layerRow, layer] of layers.entries()) {
+      for (const [column, px] of patternXs.entries()) {
+        for (let ty = 0; ty < group.height; ty++) {
+          for (let tx = 0; tx < group.width; tx++) {
+            const index = ((((((frame * group.patternZ + patternZ) * group.patternY + py)
+              * group.patternX + px) * group.layers + layer) * group.height + ty) * group.width + tx);
+            const spriteId = group.sprites[index] ?? 0;
+            if (!spriteId) continue;
+            const pixels = spriteOverrides.get(spriteId) ?? decodeSprite(spriteData, spriteId);
+            if (pixels) context.putImageData(pixels,
+              (column * group.width + group.width - 1 - tx) * 32,
+              ((row * layers.length + layerRow) * group.height + group.height - 1 - ty) * 32);
+          }
+        }
+      }
+    }
+  }
+  downloadBlob(await canvasToPng(output),
+    `sprite_${thing.id}_frame${frame}${selectedLayer == null ? '_all_layers' : `_layer${selectedLayer + 1}`}.png`,
+    'image/png');
 }
 
 /**

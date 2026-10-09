@@ -43,8 +43,8 @@ void importFullDirectionalSheet({
   file: {}, thing,
   addSprite(data) { sprites.push(data); return sprites.length; },
   idleFrames: 1, movingFrames: 2, layers: 1, spriteSize: 64,
-  sourceColumnsByLayer: [[0, 1, 2, 3]],
-  idleSourceRows: [0], movingSourceRows: [1, 2],
+  sourceColumns: [0, 1, 2, 3],
+  idleSourceRowsByLayer: [[0]], movingSourceRowsByLayer: [[1, 2]],
 }).then((result) => {
   assert.deepEqual(result, { idleFrames: 1, movingFrames: 2, layers: 2 });
   assert.equal(thing.frameGroups[0].layers, 2);
