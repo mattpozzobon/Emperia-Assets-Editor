@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { ItemAttachmentBindingsEditor } from './ItemAttachmentBindingsEditor';
 import { Check, ChevronDown, Search, X } from 'lucide-react';
 import { useOBStore } from '../store';
 import type { ItemProperties, ExclusiveSlotDef, ItemDefinition, ObjectData } from '../lib/types';
@@ -698,6 +699,19 @@ export function ServerPropertiesEditor({
 
   return (
     <div className="space-y-2 text-xs">
+      {mode !== 'availability' && (props.slotType === 'belt' || props.slotType === 'backpack') && <ItemAttachmentBindingsEditor
+        bindings={props.attachmentBindings}
+        catalog={objectData?.attachmentCatalog ?? new Map()}
+        owner={props.slotType}
+        potionSlots={Number(props.containerSizePotions) || 0}
+        onChange={bindings => {
+          if (selectedId == null) return;
+          const current = itemId != null ? itemDefinitions.get(itemId) : undefined;
+          const properties = { ...current?.properties };
+          writeItemProperty(properties, 'attachmentBindings', bindings);
+          updateItemDefinition(selectedId, { properties });
+        }}
+      />}
       {mode === 'details' && (
         <div
           role="tablist"

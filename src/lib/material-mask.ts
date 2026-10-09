@@ -7,12 +7,18 @@ import type { FrameGroup, ThingType } from './types';
 /**
  * Sets HSV saturation to zero while preserving each pixel's value and alpha.
  * This matches Aseprite's HSV saturation -1 operation: the brightest RGB
- * channel becomes the neutral gray value.
+ * channel becomes the neutral gray value. An optional mask restricts the
+ * operation to visible pixels of the selected region.
  */
-export function desaturateSprite(image: ImageData): void {
+export function desaturateSprite(image: ImageData, mask?: ImageData, regionColor?: number): void {
   const bytes = image.data;
   for (let offset = 0; offset < bytes.length; offset += 4) {
     if (bytes[offset + 3] === 0) continue;
+    if (mask) {
+      if (!mask.data[offset + 3]) continue;
+      const rgb = (mask.data[offset] << 16) | (mask.data[offset + 1] << 8) | mask.data[offset + 2];
+      if (regionColor != null && rgb !== regionColor) continue;
+    }
     const value = Math.max(bytes[offset], bytes[offset + 1], bytes[offset + 2]);
     // Pure black remains pure black; only colored/non-black pixels change.
     if (value === 0) continue;

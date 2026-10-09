@@ -1,6 +1,7 @@
 import { ensureColorMaskRegion } from '../lib/color-mask-migration';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useOBStore } from '../store';
+import { captureSpriteEdit, recordSpriteEdit } from '../store/edit-history';
 import { decodeSprite, clearSpriteCache } from '../lib/sprite-decoder';
 import { applyOutfitMask, COLOR_MASK_COLORS, getColorMaskLayer } from '../lib/outfit-colors';
 import type { OutfitColorIndices } from '../lib/outfit-colors';
@@ -84,6 +85,7 @@ export function SpritePreview() {
   const maskColorPreviewRef = useRef<HTMLCanvasElement>(null);
   const frameTimerRef = useRef<number>(0);
   const latestRenderKeyRef = useRef('');
+  const maskHistoryRef = useRef<ReturnType<typeof captureSpriteEdit> | null>(null);
   const maskPaintingRef = useRef(false);
   const maskStrokeModeRef = useRef<'paint' | 'erase' | null>(null);
   const maskStrokeButtonRef = useRef(0);
@@ -794,6 +796,12 @@ export function SpritePreview() {
     lastMaskPaintPointRef.current = point;
     // A stroke outside the base must not allocate a mask or dirty the object.
     if (imageData.data.every((value, index) => value === (source?.data[index] ?? 0))) return;
+    const historyState = useOBStore.getState();
+    const previousEntry = historyState.undoStack[historyState.undoStack.length - 1];
+    if (!maskHistoryRef.current || maskHistoryRef.current.thingId !== thing.id
+      || !previousEntry || !('token' in previousEntry) || previousEntry.token !== maskHistoryRef.current.token) {
+      maskHistoryRef.current = captureSpriteEdit(historyState, thing.id);
+    }
     if (thing.materialMaskLayer == null) ensureColorMaskRegion(thing, activeColorMaskRegion);
 
     if (spriteId > 0) {
@@ -808,7 +816,7 @@ export function SpritePreview() {
     const store = useOBStore.getState();
     const dirtyIds = new Set(store.dirtyIds);
     dirtyIds.add(thing.id);
-    useOBStore.setState({ dirty: true, dirtyIds });
+    useOBStore.setState({ dirty: true, dirtyIds, ...recordSpriteEdit(maskHistoryRef.current, store) });
     lastMaskPaintPointRef.current = point;
   }, [activeMaskColor, activeColorMaskRegion, addSprite, group, materialMaskBrushSize, materialMaskPaintMode, replaceSprite, spriteData, thing, editableMaskLayer]);
 
@@ -819,6 +827,7 @@ export function SpritePreview() {
     if (!point) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
+    maskHistoryRef.current = null;
     maskPaintingRef.current = true;
     maskStrokeModeRef.current = event.button === 2 ? 'erase' : materialMaskPaintMode;
     maskStrokeButtonRef.current = event.button === 2 ? 2 : 1;

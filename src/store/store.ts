@@ -2,12 +2,14 @@
  * Global state for the Assets Editor using Zustand.
  */
 import { create } from 'zustand';
+import { restoreSpriteEdit } from './edit-history';
 import { HAIR_GENDER_ALL, HAIR_RACE_ALL, HAIR_TIER_ALL, ITEM_LOCALES, type ThingType, type ThingCategory, type ThingFlags, type FrameGroup, type ItemDefinition, type ItemProperties } from '../lib/types';
 import { parseObjectData } from '../lib/object-parser';
 import { parseSpriteData, clearSpriteCache, clearSpriteCacheId } from '../lib/sprite-decoder';
 import { maybeDecompress } from '../lib/emperia-format';
 import { syncItemFlagsFromVisual, deriveGroup, deriveTopOrder, poseSetProfileKey } from '../lib/types';
 import { migrateAttachmentLibrary } from '../lib/attachment-library';
+import { ATTACHMENT_POINTS } from '../lib/attachments.generated';
 import type { OBState } from './store-types';
 import { shiftThingsDown, allocateThingId, remapSpriteIds } from './thing-helpers';
 import { createHairCatalogSlice } from './hair-catalog-slice';
@@ -792,6 +794,14 @@ export const useOBStore = create<OBState>((set, get) => ({
     const { objectData, undoStack, redoStack, editVersion, itemDefinitions } = get();
     if (!objectData || undoStack.length === 0) return;
     const entry = undoStack[undoStack.length - 1];
+    if ('beforeThing' in entry) {
+      set({
+        ...restoreSpriteEdit(get(), entry, false),
+        undoStack: undoStack.slice(0, -1),
+        redoStack: [...redoStack, entry],
+      });
+      return;
+    }
     const thing = objectData.things.get(entry.thingId);
     if (thing) {
       thing.flags = { ...entry.oldFlags };
@@ -831,6 +841,14 @@ export const useOBStore = create<OBState>((set, get) => ({
     const { objectData, undoStack, redoStack, editVersion, itemDefinitions } = get();
     if (!objectData || redoStack.length === 0) return;
     const entry = redoStack[redoStack.length - 1];
+    if ('beforeThing' in entry) {
+      set({
+        ...restoreSpriteEdit(get(), entry, true),
+        undoStack: [...undoStack, entry],
+        redoStack: redoStack.slice(0, -1),
+      });
+      return;
+    }
     const thing = objectData.things.get(entry.thingId);
     if (thing) {
       thing.flags = { ...entry.newFlags };
@@ -957,7 +975,7 @@ export const useOBStore = create<OBState>((set, get) => ({
     const { objectData, editVersion } = get();
     if (!objectData) return null;
 
-    const points = ['belt1', 'belt2', 'belt3', 'beltPouch', 'backpackLeft', 'backpackRight', 'backpackBottom'] as const;
+    const points = ATTACHMENT_POINTS;
     const point = cat === 'attachments' ? points.find(candidate => !Array.from(objectData.attachmentCatalog?.values() ?? []).some(entry => entry.attachment.point === candidate)) : undefined;
     if (cat === 'attachments' && !point) return null;
     const { insertId, dirtyIds: newDirtyIds } = allocateThingId(objectData, cat, get().dirtyIds);

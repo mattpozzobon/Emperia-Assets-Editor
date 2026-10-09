@@ -58,7 +58,6 @@ export function createEquipmentCatalogSlice(set: Set_, get: Get_) {
       if (!Number.isInteger(entry.attachmentId) || entry.attachmentId < 1 || entry.attachmentId > 65535) throw new Error('Invalid attachment ID');
       const reserved = defaultAttachmentDefinition(entry.attachmentId);
       if (reserved && reserved.point !== entry.attachment.point) throw new Error('Existing belt visual IDs keep their physical point');
-      if ([...(state.objectData.attachmentCatalog?.values() ?? [])].some(value => value.attachmentId !== entry.attachmentId && value.attachment.point === entry.attachment.point)) throw new Error('This attachment point already has a visual');
       if (entry.attachmentId === (state.objectData.attachmentCount ?? 0) + 1) get().addThing('attachments');
       const current = get();
       if (entry.attachmentId > (current.objectData?.attachmentCount ?? 0)) throw new Error('Attachment is outside its library');

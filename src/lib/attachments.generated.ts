@@ -57,7 +57,7 @@ export function normalizeAttachments(value: OutfitAttachments | Record<string, u
   for (const key of Object.keys(value)) {
     const point = key as AttachmentPoint;
     if (!attachmentPointCode(point)) continue;
-    const attachment = value[point];
+    const attachment = (value as Record<string, unknown>)[point];
     if (!attachment || typeof attachment !== 'object') continue;
     if ('attachmentId' in attachment) {
       const entry = attachment as Attachment;

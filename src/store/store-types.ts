@@ -4,11 +4,22 @@
 import type { ObjectData, SpriteData, ThingType, ThingCategory, LibraryCategory, ThingFlags, FrameGroup, ItemDefinition, EquipmentCatalogEntry, HairDefinition, BeardDefinition, ItemSeatDefinition, SeatPoseProfile, PoseAction, ItemLocale, ItemLocalizedText, ItemCatalogFile, MaterialMaskKind } from '../lib/types';
 import type { OutfitColorIndices } from '../lib/outfit-colors';
 
-export interface UndoEntry {
+export interface FlagUndoEntry {
   thingId: number;
   oldFlags: ThingFlags;
   newFlags: ThingFlags;
 }
+
+export interface SpriteEditEntry {
+  thingId: number;
+  beforeThing: ThingType;
+  afterThing: ThingType;
+  beforeSprites: Map<number, ImageData | undefined>;
+  afterSprites: Map<number, ImageData | undefined>;
+  token: object;
+}
+
+export type UndoEntry = FlagUndoEntry | SpriteEditEntry;
 
 /** A group of imported sprites that form a logical multi-tile unit (e.g. 2×2 item). */
 export interface SpriteGroup {

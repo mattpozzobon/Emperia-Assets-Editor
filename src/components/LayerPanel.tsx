@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CopyPlus, Sun, Paintbrush, Eraser } from 'lucide-react';
 import { useOBStore } from '../store';
+import { captureSpriteEdit, recordSpriteEdit } from '../store/edit-history';
 import { clearSpriteCache, clearSpriteCacheId, decodeSprite } from '../lib/sprite-decoder';
 import { COLOR_MASK_COLORS, getColorMaskLayer, paletteToCSS, OUTFIT_PALETTE, PALETTE_SIZE } from '../lib/outfit-colors';
 import type { OutfitColorIndices } from '../lib/outfit-colors';
@@ -24,6 +25,7 @@ const MATERIAL_MASK_OPTIONS: { kind: MaterialMaskKind; label: string; color: str
 ];
 
 export function LayerPanel({ section = 'details' }: { section?: 'masks' | 'details' }) {
+  const [desaturateMaskedOnly, setDesaturateMaskedOnly] = useState(true);
   const [brightnessMin, setBrightnessMin] = useState(128);
   const [brightnessMax, setBrightnessMax] = useState(255);
   const selectedId = useOBStore((s) => s.selectedThingId);
@@ -85,6 +87,13 @@ export function LayerPanel({ section = 'details' }: { section?: 'masks' | 'detai
       useOBStore.setState({ materialMaskPaintMode: null });
     }
   }, [section, hasActiveGroupSharedMaterialMasks, materialMaskPaintMode]);
+
+  const withMaskHistory = useCallback((action: () => void) => {
+    if (!thing) return;
+    const before = captureSpriteEdit(useOBStore.getState(), thing.id);
+    action();
+    useOBStore.setState(recordSpriteEdit(before, useOBStore.getState()));
+  }, [thing]);
 
   const markThingDirty = useCallback(() => {
     if (!thing) return;
@@ -223,19 +232,35 @@ export function LayerPanel({ section = 'details' }: { section?: 'masks' | 'detai
         source.width,
         source.height,
       );
-      desaturateSprite(desaturated);
+      if (desaturateMaskedOnly) {
+        // Union the selected region across every tile that references this base.
+        for (const frameGroup of thing.frameGroups) {
+          const tiles = frameGroup.width * frameGroup.height;
+          if (tiles <= 0 || activeMaterialMaskLayer >= frameGroup.layers) continue;
+          for (let index = 0; index < frameGroup.sprites.length; index++) {
+            if (Math.floor(index / tiles) % frameGroup.layers !== 0 || frameGroup.sprites[index] !== spriteId) continue;
+            const maskId = frameGroup.sprites[index + activeMaterialMaskLayer * tiles] ?? 0;
+            const mask = spriteOverrides.get(maskId) ?? decodeSprite(spriteData, maskId);
+            if (mask) desaturateSprite(desaturated, mask, activeMaskColor);
+          }
+        }
+      } else {
+        desaturateSprite(desaturated);
+      }
+      if (desaturated.data.every((value, index) => value === source.data[index])) continue;
       spriteOverrides.set(spriteId, desaturated);
       dirtySpriteIds.add(spriteId);
       clearSpriteCacheId(spriteId);
     }
 
+    if (spriteOverrides.size === store.spriteOverrides.size && [...spriteOverrides].every(([id, image]) => store.spriteOverrides.get(id) === image)) return;
     useOBStore.setState({
       dirty: true,
       spriteOverrides,
       dirtySpriteIds,
       editVersion: store.editVersion + 1,
     });
-  }, [activeMaterialMaskLayer, spriteData, thing]);
+  }, [activeMaterialMaskLayer, activeMaskColor, desaturateMaskedOnly, spriteData, thing]);
 
   const createMasksFromPixels = useCallback((byBrightness: boolean) => {
     if (!thing || !spriteData || activeMaterialMaskLayer == null || hasSharedMaterialMasks) return;
@@ -363,7 +388,7 @@ export function LayerPanel({ section = 'details' }: { section?: 'masks' | 'detai
                   checked={hasMaterialMask}
                   disabled={hasColorMask}
                   title={hasColorMask ? 'Disable color masks first' : undefined}
-                  onChange={(event) => setMaterialMaskEnabled(event.target.checked)}
+                  onChange={(event) => withMaskHistory(() => setMaterialMaskEnabled(event.target.checked))}
                   className="mask-checkbox"
                 />
                 <span className="text-emperia-text">Use material masks</span>
@@ -372,7 +397,7 @@ export function LayerPanel({ section = 'details' }: { section?: 'masks' | 'detai
                 hasSharedMaterialMasks ? (
                   <button
                     type="button"
-                    onClick={makeMaterialMasksUnique}
+                    onClick={() => withMaskHistory(makeMaterialMasksUnique)}
                     className="ml-auto flex shrink-0 items-center gap-1 rounded border border-amber-400/60 bg-amber-500/15 px-1.5 py-0.5 text-[8px] text-amber-300 hover:bg-amber-500/25"
                     title={`${sharedMaterialMaskReferenceCount} mask reference${sharedMaterialMaskReferenceCount === 1 ? ' is' : 's are'} shared across animation groups or appearances. Create private masks for every group.`}
                   >
@@ -385,7 +410,7 @@ export function LayerPanel({ section = 'details' }: { section?: 'masks' | 'detai
             {section === 'masks' && <label className="flex items-center gap-1.5 cursor-pointer">
               <input type="checkbox" checked={hasColorMask} disabled={hasMaterialMask || (hasColorMask && thing.frameGroups.some(frameGroup => frameGroup.layers > 2))}
                 title={hasMaterialMask ? 'Disable material masks first' : hasColorMask && thing.frameGroups.some(frameGroup => frameGroup.layers > 2) ? 'Reduce to two layers before removing the color mask' : undefined}
-                onChange={(event) => setColorMaskEnabled(event.target.checked)} className="mask-checkbox" />
+                onChange={(event) => withMaskHistory(() => setColorMaskEnabled(event.target.checked))} className="mask-checkbox" />
               <span className="text-emperia-text">Use color masks</span>
             </label>}
             {section === 'details' && hasMask && (
@@ -410,18 +435,26 @@ export function LayerPanel({ section = 'details' }: { section?: 'masks' | 'detai
                     );
                   })}
                 </div>
+                <label className="flex items-center gap-2 text-emperia-muted">
+                  <input type="checkbox" checked={desaturateMaskedOnly}
+                    onChange={(event) => setDesaturateMaskedOnly(event.target.checked)} className="mask-checkbox" />
+                  Desaturate only {activeMaterialMaskLabel} mask
+                </label>
+                {desaturateMaskedOnly && <p className="text-[9px] text-emperia-muted">
+                  Paint the area, then click Desaturate base.
+                </p>}
                 <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={desaturateBaseSprites}
+                  onClick={() => withMaskHistory(desaturateBaseSprites)}
                   className="w-full rounded border border-emperia-border px-2 py-1 text-[9px] text-emperia-muted hover:border-amber-400/60 hover:text-emperia-text"
-                  title="Set HSV saturation to zero for Idle and Moving sprites, excluding the mask layer"
+                  title={desaturateMaskedOnly ? `Desaturate only pixels painted as ${activeMaterialMaskLabel}, across all groups and frames` : "Desaturate the entire base across all groups and frames"}
                 >
                   Desaturate base
                 </button>
                 <button
                   type="button"
-                  onClick={() => createMasksFromPixels(false)}
+                  onClick={() => withMaskHistory(() => createMasksFromPixels(false))}
                   disabled={hasSharedMaterialMasks}
                   className="w-full rounded border border-amber-500/30 bg-amber-950/20 px-2 py-1 text-[9px] text-amber-300 hover:border-amber-400/70 hover:bg-amber-950/35 disabled:cursor-not-allowed disabled:opacity-40"
                   title={hasSharedMaterialMasks
@@ -450,7 +483,7 @@ export function LayerPanel({ section = 'details' }: { section?: 'masks' | 'detai
                       className="min-w-0 flex-1 accent-amber-500" />
                     <span className="w-6 text-right font-mono text-emperia-text">{brightnessMax}</span>
                   </label>
-                  <button type="button" onClick={() => createMasksFromPixels(true)}
+                  <button type="button" onClick={() => withMaskHistory(() => createMasksFromPixels(true))}
                     disabled={!spriteData || hasSharedMaterialMasks}
                     title={hasSharedMaterialMasks ? 'Make masks unique before generating by brightness' : `Rebuild ${activeMaterialMaskLabel} from base pixels in the inclusive range ${brightnessMin}–${brightnessMax}, across all groups, directions and frames. Overwrites matching colors and clears old ${activeMaterialMaskLabel} pixels outside the range.`}
                     className="w-full rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[10px] font-medium text-amber-300 transition-colors hover:border-amber-400/70 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-40">

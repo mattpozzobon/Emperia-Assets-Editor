@@ -1,4 +1,5 @@
 import type { ExclusiveSlotDef, ItemProperties } from './types';
+import { validateItemAttachmentBindings } from './attachments.generated';
 import {
   EXCLUSIVE_SLOT_CATEGORY_CODE_BY_TYPE,
   EXCLUSIVE_SLOT_TYPE_BY_CATEGORY_CODE,
@@ -120,6 +121,7 @@ export const ITEM_PROPERTY_CODE_BY_KEY: Readonly<Record<string, number>> = {
   autoLootable: 292,
   mannequin: 293,
   mannequinDirection: 294,
+  attachmentBindings: 295,
 };
 
 const SLOT_TYPES = [
@@ -383,6 +385,7 @@ function decodePropertyValue(key: string, value: unknown): unknown {
 }
 
 function encodePropertyValue(key: string, value: unknown): unknown {
+  if (key === 'attachmentBindings') validateItemAttachmentBindings(value);
   if (key === 'exclusiveSlots') return encodeExclusiveSlotsForStorage(value);
   const values = ENUMS_BY_KEY[key];
   if (!values || typeof value !== 'string') return value;

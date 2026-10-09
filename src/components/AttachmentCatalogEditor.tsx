@@ -9,6 +9,7 @@ const POINT_LABELS: Record<AttachmentPoint, string> = {
   backpackLeft: 'Backpack · Left', backpackRight: 'Backpack · Right', backpackBottom: 'Backpack · Bottom',
 };
 const inputClass = 'rounded border border-emperia-border bg-emperia-bg px-2 py-1 text-xs';
+const pointLabel = (point: AttachmentPoint): string => POINT_LABELS[point] ?? point.replace(/^(belt|backpack)(\d+)$/, (_, owner, slot) => `${owner === 'belt' ? 'Belt' : 'Backpack'} · Slot ${slot}`);
 
 export function AttachmentCatalogEditor() {
   const data = useOBStore(state => state.objectData);
@@ -25,10 +26,10 @@ export function AttachmentCatalogEditor() {
     try { update(entry); setError(''); } catch (failure) { setError(String(failure instanceof Error ? failure.message : failure)); }
   };
   const add = () => {
-    const point = ATTACHMENT_POINTS.find(candidate => ![...(data.attachmentCatalog?.values() ?? [])].some(entry => entry.attachment?.point === candidate));
+    const point = ATTACHMENT_POINTS.find(candidate => (filter === 'backpack' ? candidate.startsWith('backpack') : /^belt\d+$/.test(candidate)) && ![...(data.attachmentCatalog?.values() ?? [])].some(entry => entry.attachment?.point === candidate));
     if (!point) { setError('Every attachment point already has a visual. Edit its sprite below.'); return; }
     const attachmentId = (data.attachmentCount ?? 0) + 1;
-    save({ attachmentId, name: POINT_LABELS[point], attachment: { point, ranks: point.startsWith('backpack') ? [3, 4, 4, 3] : [0, 0, 0, 0] } });
+    save({ attachmentId, name: pointLabel(point), attachment: { point, ranks: point.startsWith('backpack') ? [3, 4, 4, 3] : [0, 0, 0, 0] } });
   };
   return <div className="space-y-4 p-4 text-emperia-text">
     <p className="text-xs text-emperia-muted">Each point represents a position. Potion colours follow the item in that slot. Backpack points are ready for future bindings.</p>
@@ -49,7 +50,10 @@ export function AttachmentCatalogEditor() {
     {entries.map(entry => <div key={entry.attachmentId} className="space-y-3 rounded border border-emperia-border p-3">
       <div className="flex flex-wrap items-center gap-3">
         <OutfitThumbnail equipmentAppearanceId={0} attachmentId={entry.attachmentId} size={48} direction={direction} primaryColor={POTION_ATTACHMENT_COLORS[previewColor]} />
-        <div><strong className="text-xs">{POINT_LABELS[entry.attachment!.point]}</strong><p className="text-[10px] text-emperia-muted">Attachment #{entry.attachmentId}</p></div>
+        <div><strong className="text-xs">{pointLabel(entry.attachment.point)}</strong><p className="text-[10px] text-emperia-muted">Attachment #{entry.attachmentId}</p></div>
+        <select aria-label={`Attachment ${entry.attachmentId} position`} className={inputClass} value={entry.attachment.point} onChange={event => save({ ...entry, attachment: { ...entry.attachment, point: event.target.value as AttachmentPoint } })}>
+          {ATTACHMENT_POINTS.map(point => <option key={point} value={point}>{pointLabel(point)}</option>)}
+        </select>
         <input aria-label={`Attachment ${entry.attachmentId} name`} className={inputClass} value={entry.name} onChange={event => save({ ...entry, name: event.target.value })} />
         {entry.attachmentId > 3 && entry.attachmentId === data.attachmentCount && <button className={inputClass} onClick={() => remove(entry.attachmentId)}>Remove</button>}
       </div>

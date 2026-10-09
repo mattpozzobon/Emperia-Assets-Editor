@@ -7,7 +7,7 @@ export function attachmentLibraryStart(data: ObjectData): number {
 
 /** Only the three potion position sources are migrated; equipment #77 is untouched. */
 export function migrateAttachmentLibrary(data: ObjectData): ObjectData {
-  if ((data.attachmentCount ?? 0) > 0) return removeMigratedEquipmentSources(data);
+  if ((data.attachmentCount ?? 0) > 0) return restoreEquipmentIndices(data);
   if (data.formatVersion >= 19) return data;
   if (![74, 75, 76].every(id => data.things.get(data.itemCount + data.outfitCount + 1 + id)?.category === 'equipment')) return data;
   const things = new Map(data.things);
@@ -39,27 +39,38 @@ export function migrateAttachmentLibrary(data: ObjectData): ObjectData {
     visualEquipmentAppearances.set(803, { ...equipment,
       name: pouch.name === 'Belt Pouch' ? 'Visual Equipment 803' : pouch.name });
   }
-  return removeMigratedEquipmentSources({ ...data, things, attachmentCount: attachmentCatalog.size, attachmentCatalog, visualEquipmentAppearances });
+  return restoreEquipmentIndices({ ...data, things, attachmentCount: attachmentCatalog.size, attachmentCatalog, visualEquipmentAppearances });
 }
 
-/** Finish both legacy migrations and v19 files saved with duplicated source records. */
-function removeMigratedEquipmentSources(data: ObjectData): ObjectData {
-  const sources = Array.from(data.attachmentCatalog?.values() ?? [])
-    .map(entry => entry.legacySourceEquipmentId)
-    .filter((id): id is number => id != null)
-    .sort((a, b) => a - b);
-  if (sources.length !== 3 || sources.some((id, index) => id !== 74 + index)) return data;
+/** Preserve public Equipment indices: moved potion sources become transparent tombstones. */
+function restoreEquipmentIndices(data: ObjectData): ObjectData {
+  const sources = [74, 75, 76];
+  const entries = sources.map((_, index) => data.attachmentCatalog?.get(index + 1));
+  if (!entries.every((entry, index) => entry?.attachment.point === `belt${index + 1}`)) return data;
+  const marked = entries.every((entry, index) => entry?.legacySourceEquipmentId === sources[index]);
+  // The defective shipped v19 migration compacted the original 186 records to 183
+  // and cleared source metadata. Restrict repair to that known layout.
+  const compacted = !marked && data.formatVersion === 19 && data.equipmentCount === 183
+    && entries.every(entry => entry?.legacySourceEquipmentId == null);
+  if (!marked && !compacted) return data;
   const equipmentStart = data.itemCount + data.outfitCount + 1;
-  if (!sources.every(id => data.things.get(equipmentStart + id)?.category === 'equipment')) return data;
-  const removed = sources.map(id => equipmentStart + id);
+  if (marked && sources.every(id => data.things.get(equipmentStart + id)?.frameGroups.every(group => group.sprites.every(sprite => sprite === 0)))) return data;
   const things = new Map<number, import('./types').ThingType>();
   for (const [id, thing] of data.things) {
-    if (removed.includes(id)) continue;
-    const nextId = id - removed.filter(sourceId => sourceId < id).length;
+    const nextId = compacted && id >= equipmentStart + 74 ? id + 3 : id;
     things.set(nextId, { ...thing, id: nextId, rawBytes: nextId === id ? thing.rawBytes : undefined });
   }
-  const remap = (id: number | undefined): number | undefined => id == null || sources.includes(id)
-    ? undefined : id - sources.filter(sourceId => sourceId < id).length;
+  for (const equipmentId of sources) {
+    const id = equipmentStart + equipmentId;
+    const template = things.get(attachmentLibraryStart(data) + (compacted ? 3 : 0) + equipmentId - 73)!;
+    things.set(id, { id, category: 'equipment',
+      flags: Object.fromEntries(Object.entries(template.flags).filter(([, value]) => typeof value === 'boolean').map(([key]) => [key, false])) as unknown as import('./types').ThingFlags,
+      frameGroups: template.frameGroups.map(group => ({ ...group, sprites: group.sprites.map(() => 0),
+        animationLengths: group.animationLengths?.map(length => ({ ...length })) })),
+    });
+  }
+  const remap = (id: number | undefined): number | undefined => id == null ? undefined
+    : compacted && id >= 74 ? id + 3 : id;
   const equipmentAppearances = new Map<number, import('./types').EquipmentAppearance>();
   for (const [id, entry] of data.equipmentAppearances) {
     const next: import('./types').EquipmentAppearance = {};
@@ -76,9 +87,8 @@ function removeMigratedEquipmentSources(data: ObjectData): ObjectData {
   }
   const attachmentCatalog = new Map<number, AttachmentCatalogEntry>();
   for (const [id, entry] of data.attachmentCatalog ?? []) {
-    const { legacySourceEquipmentId: _source, ...next } = entry;
-    attachmentCatalog.set(id, next);
+    attachmentCatalog.set(id, id <= 3 ? { ...entry, legacySourceEquipmentId: sources[id - 1] } : entry);
   }
-  return { ...data, things, equipmentCount: data.equipmentCount - sources.length,
+  return { ...data, things, equipmentCount: data.equipmentCount + (compacted ? 3 : 0),
     equipmentAppearances, visualEquipmentAppearances, attachmentCatalog };
 }

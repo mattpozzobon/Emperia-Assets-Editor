@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useOBStore, getDisplayId } from './store';
-import { attachmentLibraryStart, migrateAttachmentLibrary } from './lib/attachment-library';
+import { migrateAttachmentLibrary } from './lib/attachment-library';
 import { FileDropZone } from './components/FileDropZone';
 import { Header } from './components/Header';
 import { CategoryTabs } from './components/CategoryTabs';
@@ -94,9 +94,8 @@ export default function App() {
     const current = useOBStore.getState();
     if (current.objectData !== migrationData) return;
     const sourceStart = migrationData.itemCount + migrationData.outfitCount + 75;
-    const remapId = (id: number) => id >= sourceStart && id < sourceStart + 3
-      ? attachmentLibraryStart(migrated) + id - sourceStart + 1
-      : id >= sourceStart + 3 ? id - 3 : id;
+    const remapId = (id: number) => migrated.equipmentCount > migrationData.equipmentCount && id >= sourceStart
+      ? id + 3 : id;
     const selectedThingId = current.selectedThingId == null ? null : remapId(current.selectedThingId);
     const selectedCategory = selectedThingId == null ? undefined : migrated.things.get(selectedThingId)?.category;
     useOBStore.setState({

@@ -134,7 +134,7 @@ export interface AttachmentCatalogEntry {
   attachmentId: number;
   name: string;
   attachment: import('./attachments.generated').AttachmentDefinition;
-  /** Pending source record in legacy migrations; cleared after it is removed from Equipment. */
+  /** Original Equipment slot, retained as an empty record to preserve public indices. */
   legacySourceEquipmentId?: number;
 }
 export type SeatDirection = 'north' | 'east' | 'south' | 'west';
@@ -393,6 +393,7 @@ export interface ItemProperties {
   // Container
   containerSize?: number;
   containerSizePotions?: number;
+  attachmentBindings?: import('./attachments.generated').ItemAttachmentBinding[];
   weightReduction?: number;
   mannequin?: boolean;
   mannequinDirection?: number;
@@ -484,7 +485,7 @@ export interface ItemProperties {
   exclusiveSlots?: ExclusiveSlotDef[];
 
   /** Catch-all for unknown properties from the JSON */
-  [key: string]: string | number | boolean | ExclusiveSlotDef[] | undefined;
+  [key: string]: string | number | boolean | ExclusiveSlotDef[] | import('./attachments.generated').ItemAttachmentBinding[] | undefined;
 }
 
 /** One exclusive-slot entry inside a container's properties. */
